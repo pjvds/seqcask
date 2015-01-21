@@ -1,4 +1,4 @@
-package bitcask
+package seqcask
 
 import "testing"
 
@@ -7,7 +7,7 @@ func BenchmarkKeydirAdds(b *testing.B) {
 
 	b.StartTimer()
 	for iteration := 0; iteration < b.N; iteration++ {
-		keydir.Add([]byte{byte(iteration << 0), byte(iteration << 8)}, 0, 0, 0, 0)
+		keydir.Add(uint64(iteration), 0, 0, 0)
 	}
 	b.StopTimer()
 }
