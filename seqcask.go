@@ -9,6 +9,8 @@ import (
 	"os"
 	"path"
 	"sync"
+
+	"github.com/OneOfOne/xxhash"
 )
 
 var (
@@ -16,7 +18,9 @@ var (
 )
 
 const (
-	SIZE_CHECKSUM = 64 / 8
+	SIZE_CHECKSUM   = 64 / 8
+	SIZE_SEQ        = 64 / 8
+	SIZE_VALUE_SIZE = 16 / 8
 )
 
 type Seqcask struct {
@@ -26,7 +30,7 @@ type Seqcask struct {
 
 	sequence uint64
 
-	keydir *SeqDir
+	seqdir *SeqDir
 }
 
 type Item struct {
@@ -41,7 +45,7 @@ type SeqDir struct {
 	shardLocks []sync.RWMutex
 }
 
-func NewKeydir() *SeqDir {
+func NewSeqDir() *SeqDir {
 	shards := make([]map[uint64]Item, 256)
 	for i := 0; i < len(shards); i++ {
 		shards[i] = make(map[uint64]Item, 1024)
@@ -101,59 +105,55 @@ func Open(directory string) (*Seqcask, error) {
 	return &Seqcask{
 		activeFile: file,
 		buffer:     new(bytes.Buffer),
-		keydir:     NewKeydir(),
+		seqdir:     NewSeqDir(),
 	}, nil
 }
 
 func (this *Seqcask) Put(value []byte) (seq uint64, err error) {
 	seq = this.sequence
 
-	vsz := uint16(len(value))
-	vpos := this.activeFilePosition + int64(this.buffer.Len()) + 8 + 2
+	valueSize := uint16(len(value))
+	position := this.activeFilePosition + int64(this.buffer.Len())
 	//tstamp := time.Now().UnixNano()
 
 	binary.Write(this.buffer, binary.LittleEndian, seq)
-	binary.Write(this.buffer, binary.LittleEndian, vsz) // 2 bytes
-	//binary.Write(this.buffer, binary.LittleEndian, tstamp)
+	binary.Write(this.buffer, binary.LittleEndian, valueSize)
 	this.buffer.Write(value)
 
-	//bufferSlice := this.buffer.Bytes()
-	//dataToCrc := bufferSlice[len(bufferSlice)-length:]
-	//checksum := xxhash.Checksum64(dataToCrc)
-	//binary.Write(this.buffer, binary.LittleEndian, checksum)
-	// TODO: re-enable crc
-	binary.Write(this.buffer, binary.LittleEndian, 0)
+	bufferSlice := this.buffer.Bytes()
+	dataToCrc := bufferSlice[position-this.activeFilePosition:]
+	checksum := xxhash.Checksum64(dataToCrc)
+	binary.Write(this.buffer, binary.LittleEndian, checksum)
 
 	// TODO: set file id
-	this.keydir.Add(seq, 1, vsz, vpos)
-
+	this.seqdir.Add(seq, 1, valueSize, position)
 	this.sequence = seq + 1
 	return
 }
 
 func (this *Seqcask) Get(seq uint64) ([]byte, error) {
-	// entry, ok := this.keydir.Get(seq)
-	// if !ok {
-	// 	return nil, ErrNotFound
-	// }
-	//
-	// buffer := make([]byte, 0, entry.ValueSize+SIZE_CHECKSUM)
-	// if read, err := this.activeFile.ReadAt(buffer, entry.VPos); err != nil {
-	// 	return nil, err
-	// } else if read != int(entry.Vsz)+SIZE_CHECKSUM {
-	// 	return nil, errors.New("read to short")
-	// }
-	//
-	// valueData := buffer[:len(buffer)-SIZE_CHECKSUM]
-	// checksumData := buffer[len(buffer)-SIZE_CHECKSUM:]
-	// checksum := binary.LittleEndian.Uint64(checksumData)
-	//
-	// if xxhash.Checksum64(valueData) != checksum {
-	// 	return nil, errors.New("checksum failed")
-	// }
-	//
-	// return valueData, nil
-	panic(errors.New("NOT IMPLEMENTED"))
+	entry, ok := this.seqdir.Get(seq)
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	entryLength := SIZE_SEQ + SIZE_VALUE_SIZE + entry.ValueSize + SIZE_CHECKSUM
+	buffer := make([]byte, entryLength, entryLength)
+	if read, err := this.activeFile.ReadAt(buffer, entry.Position); err != nil {
+		return nil, err
+	} else if read != len(buffer) {
+		return nil, errors.New("read to short")
+	}
+
+	checksumData := buffer[:len(buffer)-SIZE_CHECKSUM]
+	checksum := binary.LittleEndian.Uint64(buffer[len(buffer)-SIZE_CHECKSUM:])
+	if xxhash.Checksum64(checksumData) != checksum {
+		return nil, errors.New("checksum failed")
+	}
+
+	valueStart := int(SIZE_SEQ + SIZE_VALUE_SIZE)
+	valueData := buffer[valueStart : valueStart+int(entry.ValueSize)]
+	return valueData, nil
 }
 
 func (this *Seqcask) Sync() error {
