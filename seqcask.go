@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/OneOfOne/xxhash/native"
 	//"github.com/ncw/directio"
@@ -24,13 +25,13 @@ const (
 	SIZE_VALUE_SIZE = 16 / 8
 )
 
-type Messages struct{
+type Messages struct {
 	messages [][]byte
 
 	done chan error
 }
 
-type Batch struct{
+type Batch struct {
 	buffer *bytes.Buffer
 
 	done chan error
@@ -45,15 +46,15 @@ type Seqcask struct {
 	seqdir *SeqDir
 
 	prepareQueue chan *Messages
-	writerQueue chan *Batch
+	writerQueue  chan *Batch
 }
 
 func (this *Seqcask) prepareLoop() {
 	batch := Batch{
 		buffer: new(bytes.Buffer),
-		done: make(chan error, 1),
+		done:   make(chan error, 1),
 	}
-	for messages := range this.prepareQueue{
+	for messages := range this.prepareQueue {
 
 		transientSeq := 0 // TODO: set, or re-align sequence?
 		transientPos := 0
@@ -86,9 +87,19 @@ func (this *Seqcask) prepareLoop() {
 func (this *Seqcask) writeLoop() {
 	var err error
 	for batch := range this.writerQueue {
-		 //_, err = batch.buffer.WriteTo(this.activeFile);
+		//_, err = batch.buffer.WriteTo(this.activeFile);
 		this.activeFile.Write(batch.buffer.Bytes())
 		batch.done <- err
+	}
+}
+
+func (this *Seqcask) syncLoop() {
+	for {
+		<-time.After(1 * time.Second)
+
+		if err := this.activeFile.Sync(); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -171,16 +182,17 @@ func Open(directory string) (*Seqcask, error) {
 	}
 
 	cask := &Seqcask{
-		activeFile: file,
-		seqdir:     NewSeqDir(),
+		activeFile:   file,
+		seqdir:       NewSeqDir(),
 		prepareQueue: make(chan *Messages, 256),
-		writerQueue: make(chan *Batch),
+		writerQueue:  make(chan *Batch),
 	}
 
 	go cask.prepareLoop()
 	go cask.prepareLoop()
 	go cask.prepareLoop()
 	go cask.writeLoop()
+	go cask.syncLoop()
 	return cask, nil
 }
 
@@ -214,11 +226,11 @@ func Open(directory string) (*Seqcask, error) {
 func (this *Seqcask) PutBatch(values ...[]byte) (err error) {
 	messages := &Messages{
 		messages: values,
-		done: make(chan error, 1),
+		done:     make(chan error, 1),
 	}
 	this.prepareQueue <- messages
 	// TODO: set seqdir items
-	return <- messages.done
+	return <-messages.done
 }
 
 func (this *Seqcask) Get(seq uint64) ([]byte, error) {
@@ -253,9 +265,9 @@ func (this *Seqcask) Sync() error {
 	// }
 	//
 	//if written > 0 {
-		if err := this.activeFile.Sync(); err != nil {
-			return err
-		}
+	if err := this.activeFile.Sync(); err != nil {
+		return err
+	}
 	//}
 	return nil
 }
