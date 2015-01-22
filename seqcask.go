@@ -32,9 +32,22 @@ type Messages struct {
 }
 
 type Batch struct {
-	buffer *bytes.Buffer
+	buffer            *bytes.Buffer
+	sequencePositions []int
 
 	done chan error
+}
+
+func (this *Batch) SetSequences(sequence uint64) {
+	bytes := this.buffer.Bytes()
+	for _, position := range this.sequencePositions {
+		binary.LittleEndian.PutUint64(bytes[position:], sequence)
+		sequence++
+	}
+}
+
+func (this *Batch) Len() int {
+	return len(this.sequencePositions)
 }
 
 type Seqcask struct {
@@ -64,7 +77,9 @@ func (this *Seqcask) prepareLoop() {
 			transientPos = batch.buffer.Len()
 
 			valueSize := uint16(len(value))
-			binary.Write(batch.buffer, binary.LittleEndian, transientSeq)
+			batch.sequencePositions = append(batch.sequencePositions, batch.buffer.Len())
+
+			binary.Write(batch.buffer, binary.LittleEndian, transientSeq) // can't we just skip those bytes?
 			binary.Write(batch.buffer, binary.LittleEndian, valueSize)
 			batch.buffer.Write(value)
 
@@ -81,15 +96,22 @@ func (this *Seqcask) prepareLoop() {
 		messages.done <- err
 
 		batch.buffer.Reset()
+		batch.sequencePositions = batch.sequencePositions[0:0]
 	}
 }
 
 func (this *Seqcask) writeLoop() {
 	var err error
 	for batch := range this.writerQueue {
+		batch.SetSequences(this.sequence)
+
 		//_, err = batch.buffer.WriteTo(this.activeFile);
-		this.activeFile.Write(batch.buffer.Bytes())
-		batch.done <- err
+		if _, err = this.activeFile.Write(batch.buffer.Bytes()); err != nil {
+			batch.done <- err
+		} else {
+			this.sequence += uint64(batch.Len())
+			batch.done <- nil
+		}
 	}
 }
 
