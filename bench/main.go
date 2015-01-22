@@ -6,7 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"time"
-
+	"sync"
+	"sync/atomic"
 	"github.com/pjvds/seqcask"
 )
 
@@ -23,32 +24,61 @@ func main() {
 	defer cask.Close()
 	defer os.RemoveAll(directory)
 
-	random := seqcask.NewRandomValueGenerator(*msgSize)
-	timeout := time.After(*duration)
-	defer random.Stop()
+	//random := seqcask.NewRandomValueGenerator(*msgSize)
+	value := []byte("mggzshawiqilnhkrlehaeejlcgwrhqdhhghvqgeuedwpzeyazhwudeoxahsywvvlxwsikadidxrsgpwndfimkkalhybcsxpmoayultaycuigbjpcjvqmcyeaxkcgvklfykpjykbfdwjbebfwlayvgdfiuceembvkijppatzrjibibdjjphwzyvlyxjslpkxvuwqrscbr")
+	//defer random.Stop()
 
-	batch := make([][]byte, 0, *batchSize)
-	putted := 0
-
-	startedAt := time.Now()
-	for timedOut := false; !timedOut; {
-		select {
-		case value := <-random.Values:
-			batch = append(batch, value)
-			if len(batch) == *batchSize {
-				if err := cask.PutBatch(batch...); err != nil {
-					panic(err)
-				}
-				cask.Sync()
-
-				putted += len(batch)
-				batch = batch[0:0]
-			}
-		case <-timeout:
-			timedOut = true
-		}
+	batch := make([][]byte, *batchSize, *batchSize)
+	for i, _ := range batch {
+		batch[i] = value
 	}
+	putted := new(int64)
+
+	var work sync.WaitGroup
+	startedAt := time.Now()
+
+	var done bool
+
+	work.Add(1)
+	go func() {
+		for !done{
+			if err := cask.PutBatch(batch...); err != nil {
+				panic(err)
+			}
+			atomic.AddInt64(putted, int64(len(batch)))
+		}
+			work.Done()
+	}()
+
+	work.Add(1)
+	go func() {
+		for !done{
+			if err := cask.PutBatch(batch...); err != nil {
+				panic(err)
+			}
+			atomic.AddInt64(putted, int64(len(batch)))
+		}
+			work.Done()
+	}()
+
+	work.Add(1)
+	go func() {
+		for !done{
+			if err := cask.PutBatch(batch...); err != nil {
+				panic(err)
+			}
+			atomic.AddInt64(putted, int64(len(batch)))
+		}
+			work.Done()
+	}()
+
+	<-time.After(*duration)
+	done = true
+
+	work.Wait()
+	cask.Sync()
 
 	elapsed := time.Since(startedAt)
-	fmt.Printf("%v messages written in %v, %.0fmsg/s\n", putted, elapsed, float64(putted)/elapsed.Seconds())
+	totalMb := float64(*putted * int64(*msgSize)) / float64(1000 * 1024)
+	fmt.Printf("%v messages written in %v, %.0fmsg/s, %0.3fmb/s\n", *putted, elapsed, float64(*putted)/elapsed.Seconds(), totalMb/elapsed.Seconds())
 }

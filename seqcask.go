@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/OneOfOne/xxhash/native"
+	//"github.com/ncw/directio"
 )
 
 var (
@@ -23,14 +24,72 @@ const (
 	SIZE_VALUE_SIZE = 16 / 8
 )
 
+type Messages struct{
+	messages [][]byte
+
+	done chan error
+}
+
+type Batch struct{
+	buffer *bytes.Buffer
+
+	done chan error
+}
+
 type Seqcask struct {
-	buffer             *bytes.Buffer
 	activeFile         *os.File
 	activeFilePosition int64
 
 	sequence uint64
 
 	seqdir *SeqDir
+
+	prepareQueue chan *Messages
+	writerQueue chan *Batch
+}
+
+func (this *Seqcask) prepareLoop() {
+	batch := Batch{
+		buffer: new(bytes.Buffer),
+		done: make(chan error, 1),
+	}
+	for messages := range this.prepareQueue{
+
+		transientSeq := 0 // TODO: set, or re-align sequence?
+		transientPos := 0
+
+		for _, value := range messages.messages {
+			// TODO: position := this.activeFilePosition + int64(this.buffer.Len())
+			transientPos = batch.buffer.Len()
+
+			valueSize := uint16(len(value))
+			binary.Write(batch.buffer, binary.LittleEndian, transientSeq)
+			binary.Write(batch.buffer, binary.LittleEndian, valueSize)
+			batch.buffer.Write(value)
+
+			bufferSlice := batch.buffer.Bytes()
+			dataToCrc := bufferSlice[transientPos:]
+			checksum := xxhash.Checksum64(dataToCrc)
+			binary.Write(batch.buffer, binary.LittleEndian, checksum)
+
+			// TODO: transientSeq++
+		}
+
+		this.writerQueue <- &batch
+		err := <-batch.done
+		messages.done <- err
+
+		batch.buffer.Reset()
+	}
+}
+
+func (this *Seqcask) writeLoop() {
+	var err error
+	for batch := range this.writerQueue {
+		 //_, err = batch.buffer.WriteTo(this.activeFile);
+		this.activeFile.Write(batch.buffer.Bytes())
+		batch.done <- err
+	}
 }
 
 type Item struct {
@@ -105,6 +164,7 @@ func Open(directory string) (*Seqcask, error) {
 		return nil, fmt.Errorf("directory not empty")
 	}
 
+	//file, err := directio.OpenFile(path.Join(directory, "1.data"), os.O_CREATE | os.O_WRONLY, 0666)
 	file, err := os.Create(path.Join(directory, "1.data"))
 	if err != nil {
 		return nil, err
@@ -113,9 +173,14 @@ func Open(directory string) (*Seqcask, error) {
 	cask := &Seqcask{
 		activeFile: file,
 		seqdir:     NewSeqDir(),
-		buffer:     new(bytes.Buffer),
+		prepareQueue: make(chan *Messages, 256),
+		writerQueue: make(chan *Batch),
 	}
-	cask.buffer.Grow(5 * 1000 * 1024) // grow to 5MB
+
+	go cask.prepareLoop()
+	go cask.prepareLoop()
+	go cask.prepareLoop()
+	go cask.writeLoop()
 	return cask, nil
 }
 
@@ -147,33 +212,13 @@ func Open(directory string) (*Seqcask, error) {
 // }
 
 func (this *Seqcask) PutBatch(values ...[]byte) (err error) {
-	this.buffer.Reset()
-
-	transientSeq := this.sequence
-
-	for _, value := range values {
-		position := this.activeFilePosition + int64(this.buffer.Len())
-
-		valueSize := uint16(len(value))
-		binary.Write(this.buffer, binary.LittleEndian, transientSeq)
-		binary.Write(this.buffer, binary.LittleEndian, valueSize)
-		this.buffer.Write(value)
-
-		bufferSlice := this.buffer.Bytes()
-		dataToCrc := bufferSlice[position-this.activeFilePosition:]
-		checksum := xxhash.Checksum64(dataToCrc)
-		binary.Write(this.buffer, binary.LittleEndian, checksum)
-
-		transientSeq++
+	messages := &Messages{
+		messages: values,
+		done: make(chan error, 1),
 	}
-
-	if _, err = this.buffer.WriteTo(this.activeFile); err != nil {
-		// TODO: unwrite written?
-	}
-
-	this.sequence = transientSeq
+	this.prepareQueue <- messages
 	// TODO: set seqdir items
-	return
+	return <- messages.done
 }
 
 func (this *Seqcask) Get(seq uint64) ([]byte, error) {
@@ -202,16 +247,16 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 }
 
 func (this *Seqcask) Sync() error {
-	written, err := this.buffer.WriteTo(this.activeFile)
-	if err != nil {
-		return err
-	}
-
-	if written > 0 {
-		if err = this.activeFile.Sync(); err != nil {
+	// written, err := this.buffer.WriteTo(this.activeFile)
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	//if written > 0 {
+		if err := this.activeFile.Sync(); err != nil {
 			return err
 		}
-	}
+	//}
 	return nil
 }
 
