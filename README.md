@@ -1,6 +1,6 @@
 # Seqcask
 
-Sequential value store based on the famous [bitcask](https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf). 
+Value value store optimized for sequential immutible data based on the famous [bitcask](https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf). 
 Seqcask has the following differences compared with bitcask;
 
 * holds to ~35% more keys in RAM
@@ -8,7 +8,7 @@ Seqcask has the following differences compared with bitcask;
 * only support `put` and `get`, no `update` or `delete`
 * does not support `buckets`
 
-Of course Seqcask has the same strengths
+Of course Seqcask shares the same *strengths* as bitcask:
 
 * single seek to retrieve any value!
 * predictable performance
@@ -16,11 +16,15 @@ Of course Seqcask has the same strengths
 * low latency and high throughput
 * data integrity
 
-And seqcask shares the same weakness as bitcask:
+And Of course Seqcask shares the same *weakness* as bitcask:
 
-* all keys need to fit in RAM, 17 bytes per key
+* all keys need to fit in RAM (17 bytes of memory per key)
 
 # Status
 Currently I am focussing on the writes. On my Macbook I am doing over 2.12 million 200 byte sized messages per second. That is 0.415gb per second.
 
 This included hashing, but lacks some meta information. Next is closing the read roundtrip.
+
+# But why?
+
+Why not? When playing with different storage engines like leveldb and bitcask I got inspired to try to beat the numbers and figured that I should at least learn something while doing so.
