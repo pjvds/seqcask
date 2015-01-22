@@ -9,6 +9,50 @@ import (
 	"github.com/pjvds/seqcask"
 )
 
+func (this *RandomValueGenerator) Stop() {
+	close(this.stop)
+}
+
+func BenchmarkPut(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustOpen(directory)
+	random := seqcask.NewRandomValueGenerator(200)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := cask.Put(<-random.Values); err != nil {
+			b.Fatalf("failed to put: %v", err.Error())
+		}
+	}
+	cask.Sync()
+}
+
+func BenchmarkPutBatch(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustOpen(directory)
+	random := NewRandomValueGenerator(200)
+
+	values := make([][]byte, 1000*1000, 1000*1000)
+	for index := range values {
+		values[index] = <-random.Values
+	}
+
+	random.Stop()
+
+	b.SetBytes(int64(len(values) * 200))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := cask.PutBatch(values...); err != nil {
+			b.Fatalf("failed to put: %v", err.Error())
+		}
+	}
+	cask.Sync()
+}
+
 func TestOpen(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)

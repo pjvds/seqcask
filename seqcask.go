@@ -10,7 +10,7 @@ import (
 	"path"
 	"sync"
 
-	"github.com/OneOfOne/xxhash"
+	"github.com/OneOfOne/xxhash/native"
 )
 
 var (
@@ -87,6 +87,14 @@ type header struct {
 	vsz    uint16
 }
 
+func MustOpen(directory string) *Seqcask {
+	if seqcask, err := Open(directory); err != nil {
+		panic(err)
+	} else {
+		return seqcask
+	}
+}
+
 func Open(directory string) (*Seqcask, error) {
 	files, err := ioutil.ReadDir(directory)
 	if err != nil {
@@ -102,32 +110,69 @@ func Open(directory string) (*Seqcask, error) {
 		return nil, err
 	}
 
-	return &Seqcask{
+	cask := &Seqcask{
 		activeFile: file,
-		buffer:     new(bytes.Buffer),
 		seqdir:     NewSeqDir(),
-	}, nil
+		buffer:     new(bytes.Buffer),
+	}
+	cask.buffer.Grow(5 * 1000 * 1024) // grow to 5MB
+	return cask, nil
 }
 
-func (this *Seqcask) Put(value []byte) (seq uint64, err error) {
-	seq = this.sequence
+// func (this *Seqcask) Put(value []byte) (seq uint64, err error) {
+// 	defer this.buffer.Reset(this.activeFile)
+//
+// 	seq = this.sequence
+// 	valueSize := uint16(len(value))
+// 	position := this.activeFilePosition
+//
+// 	binary.Write(this.buffer, binary.LittleEndian, seq)
+// 	binary.Write(this.buffer, binary.LittleEndian, valueSize)
+// 	this.buffer.Write(value)
+//
+// 	bufferSlice := this.buffer.Bytes()
+// 	dataToCrc := bufferSlice[position-this.activeFilePosition:]
+// 	checksum := xxhash.Checksum64(dataToCrc)
+// 	binary.Write(this.buffer, binary.LittleEndian, checksum)
+//
+// 	// TODO: inspect written
+// 	if _, err = this.buffer.WriteTo(this.activeFile); err != nil {
+// 		return
+// 	}
+//
+// 	// TODO: set file id
+// 	this.seqdir.Add(seq, 1, valueSize, position)
+// 	this.sequence = seq + 1
+// 	return
+// }
 
-	valueSize := uint16(len(value))
-	position := this.activeFilePosition + int64(this.buffer.Len())
-	//tstamp := time.Now().UnixNano()
+func (this *Seqcask) PutBatch(values ...[]byte) (err error) {
+	this.buffer.Reset()
 
-	binary.Write(this.buffer, binary.LittleEndian, seq)
-	binary.Write(this.buffer, binary.LittleEndian, valueSize)
-	this.buffer.Write(value)
+	transientSeq := this.sequence
 
-	bufferSlice := this.buffer.Bytes()
-	dataToCrc := bufferSlice[position-this.activeFilePosition:]
-	checksum := xxhash.Checksum64(dataToCrc)
-	binary.Write(this.buffer, binary.LittleEndian, checksum)
+	for _, value := range values {
+		position := this.activeFilePosition + int64(this.buffer.Len())
 
-	// TODO: set file id
-	this.seqdir.Add(seq, 1, valueSize, position)
-	this.sequence = seq + 1
+		valueSize := uint16(len(value))
+		binary.Write(this.buffer, binary.LittleEndian, transientSeq)
+		binary.Write(this.buffer, binary.LittleEndian, valueSize)
+		this.buffer.Write(value)
+
+		bufferSlice := this.buffer.Bytes()
+		dataToCrc := bufferSlice[position-this.activeFilePosition:]
+		checksum := xxhash.Checksum64(dataToCrc)
+		binary.Write(this.buffer, binary.LittleEndian, checksum)
+
+		transientSeq++
+	}
+
+	if _, err = this.buffer.WriteTo(this.activeFile); err != nil {
+		// TODO: unwrite written?
+	}
+
+	this.sequence = transientSeq
+	// TODO: set seqdir items
 	return
 }
 
