@@ -62,13 +62,13 @@ func (this *Seqcask) prepareLoop() {
 			continue
 		}
 
-		for index, value := range messages.messages {
+		/*for index, value := range messages.messages {
 			offset := result.Offset + uint64(index)
 			vsz := uint16(len(value))
 			pos := result.FileOffset + int64(batch.positions[index])
 
 			this.seqdir.Add(offset, 0, vsz, pos)
-		}
+		}*/
 		messages.done <- nil
 
 		batch.Reset()
