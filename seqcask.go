@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -38,22 +39,65 @@ type BatchWriteResult struct {
 }
 
 type Batch struct {
-	buffer            *bytes.Buffer
-	sequencePositions []int
+	buffer    *bytes.Buffer
+	positions []int
 
 	done chan BatchWriteResult
 }
 
-func (this *Batch) SetSequences(sequence uint64) {
+// Puts a single value to this batch.
+func (this *Batch) Put(value []byte) {
+	startPosition := this.buffer.Len()
+	// store the current item position
+	this.positions = append(this.positions, startPosition)
+
+	// write offset
+	if err := binary.Write(this.buffer, binary.LittleEndian, uint64(0)); err != nil {
+		panic(err)
+	}
+	// write value size
+	if err := binary.Write(this.buffer, binary.LittleEndian, uint16(len(value))); err != nil {
+		panic(err)
+	}
+	// write value
+	if _, err := this.buffer.Write(value); err != nil {
+		panic(err)
+	}
+
+	// get the slice of the buffer to read directly
+	// from it without effecting the buffer state.
+	rawBuffer := this.buffer.Bytes()
+	itemData := rawBuffer[startPosition:]
+	checksum := xxhash.Checksum64(itemData)
+
+	// write checksum
+	if err := binary.Write(this.buffer, binary.LittleEndian, checksum); err != nil {
+		panic(err)
+	}
+}
+
+// Reset truncates the buffer and positions
+func (this *Batch) Reset() {
+	this.buffer.Reset()
+	this.positions = this.positions[0:0]
+}
+
+// WriteTo writes the content of the current batch
+func (this *Batch) Write(startOffset uint64, writer io.Writer) (n int64, err error) {
+	this.setOffsets(startOffset)
+	n, err = this.buffer.WriteTo(writer)
+	return
+}
+
+func (this *Batch) setOffsets(startOffset uint64) {
 	bytes := this.buffer.Bytes()
-	for _, position := range this.sequencePositions {
-		binary.LittleEndian.PutUint64(bytes[position:], sequence)
-		sequence++
+	for index, position := range this.positions {
+		binary.LittleEndian.PutUint64(bytes[position:], startOffset+uint64(index))
 	}
 }
 
 func (this *Batch) Len() int {
-	return len(this.sequencePositions)
+	return len(this.positions)
 }
 
 type Seqcask struct {
@@ -76,36 +120,8 @@ func (this *Seqcask) prepareLoop() {
 	}
 
 	for messages := range this.prepareQueue {
-
-		transientPos := 0
-
 		for _, value := range messages.messages {
-			// TODO: position := this.activeFilePosition + int64(this.buffer.Len())
-			transientPos = batch.buffer.Len()
-
-			valueSize := uint16(len(value))
-			batch.sequencePositions = append(batch.sequencePositions, batch.buffer.Len())
-
-			// write offset
-			if err := binary.Write(batch.buffer, binary.LittleEndian, uint64(0)); err != nil {
-				panic(err)
-			}
-			// write value size
-			if err := binary.Write(batch.buffer, binary.LittleEndian, valueSize); err != nil {
-				panic(err)
-			}
-			// write value
-			batch.buffer.Write(value)
-
-			bufferSlice := batch.buffer.Bytes()
-			dataToCrc := bufferSlice[transientPos:]
-			checksum := xxhash.Checksum64(dataToCrc)
-			// write checksum
-			if err := binary.Write(batch.buffer, binary.LittleEndian, checksum); err != nil {
-				panic(err)
-			}
-
-			// TODO: transientSeq++
+			batch.Put(value)
 		}
 
 		this.writerQueue <- &batch
@@ -119,14 +135,13 @@ func (this *Seqcask) prepareLoop() {
 		for index, value := range messages.messages {
 			offset := result.Offset + uint64(index)
 			vsz := uint16(len(value))
-			pos := result.FileOffset + int64(batch.sequencePositions[index])
+			pos := result.FileOffset + int64(batch.positions[index])
 
 			this.seqdir.Add(offset, 0, vsz, pos)
 		}
 		messages.done <- nil
 
-		batch.buffer.Reset()
-		batch.sequencePositions = batch.sequencePositions[0:0]
+		batch.Reset()
 	}
 }
 
@@ -135,10 +150,8 @@ func (this *Seqcask) writeLoop() {
 	var n int64
 
 	for batch := range this.writerQueue {
-		batch.SetSequences(this.sequence)
-
 		//_, err = batch.buffer.WriteTo(this.activeFile);
-		if n, err = batch.buffer.WriteTo(this.activeFile); err != nil {
+		if n, err = batch.Write(this.sequence, this.activeFile); err != nil {
 			batch.done <- BatchWriteResult{
 				Error: err,
 			}
