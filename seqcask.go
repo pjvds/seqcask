@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"sync"
@@ -30,11 +31,17 @@ type Messages struct {
 	done chan error
 }
 
+type BatchWriteResult struct {
+	FileOffset int64
+	Offset     uint64
+	Error      error
+}
+
 type Batch struct {
 	buffer            *bytes.Buffer
 	sequencePositions []int
 
-	done chan error
+	done chan BatchWriteResult
 }
 
 func (this *Batch) SetSequences(sequence uint64) {
@@ -62,13 +69,14 @@ type Seqcask struct {
 }
 
 func (this *Seqcask) prepareLoop() {
+	var result BatchWriteResult
 	batch := Batch{
 		buffer: new(bytes.Buffer),
-		done:   make(chan error, 1),
+		done:   make(chan BatchWriteResult, 1),
 	}
+
 	for messages := range this.prepareQueue {
 
-		transientSeq := 0 // TODO: set, or re-align sequence?
 		transientPos := 0
 
 		for _, value := range messages.messages {
@@ -78,21 +86,44 @@ func (this *Seqcask) prepareLoop() {
 			valueSize := uint16(len(value))
 			batch.sequencePositions = append(batch.sequencePositions, batch.buffer.Len())
 
-			binary.Write(batch.buffer, binary.LittleEndian, transientSeq) // can't we just skip those bytes?
-			binary.Write(batch.buffer, binary.LittleEndian, valueSize)
+			// write offset
+			if err := binary.Write(batch.buffer, binary.LittleEndian, uint64(0)); err != nil {
+				panic(err)
+			}
+			// write value size
+			if err := binary.Write(batch.buffer, binary.LittleEndian, valueSize); err != nil {
+				panic(err)
+			}
+			// write value
 			batch.buffer.Write(value)
 
 			bufferSlice := batch.buffer.Bytes()
 			dataToCrc := bufferSlice[transientPos:]
 			checksum := xxhash.Checksum64(dataToCrc)
-			binary.Write(batch.buffer, binary.LittleEndian, checksum)
+			// write checksum
+			if err := binary.Write(batch.buffer, binary.LittleEndian, checksum); err != nil {
+				panic(err)
+			}
 
 			// TODO: transientSeq++
 		}
 
 		this.writerQueue <- &batch
-		err := <-batch.done
-		messages.done <- err
+		result = <-batch.done
+
+		if result.Error != nil {
+			messages.done <- result.Error
+			continue
+		}
+
+		for index, value := range messages.messages {
+			offset := result.Offset + uint64(index)
+			vsz := uint16(len(value))
+			pos := result.FileOffset + int64(batch.sequencePositions[index])
+
+			this.seqdir.Add(offset, 0, vsz, pos)
+		}
+		messages.done <- nil
 
 		batch.buffer.Reset()
 		batch.sequencePositions = batch.sequencePositions[0:0]
@@ -101,15 +132,23 @@ func (this *Seqcask) prepareLoop() {
 
 func (this *Seqcask) writeLoop() {
 	var err error
+	var n int64
+
 	for batch := range this.writerQueue {
 		batch.SetSequences(this.sequence)
 
 		//_, err = batch.buffer.WriteTo(this.activeFile);
-		if _, err = this.activeFile.Write(batch.buffer.Bytes()); err != nil {
-			batch.done <- err
+		if n, err = batch.buffer.WriteTo(this.activeFile); err != nil {
+			batch.done <- BatchWriteResult{
+				Error: err,
+			}
 		} else {
+			log.Printf("wrote %v bytes", n)
+			batch.done <- BatchWriteResult{
+				Offset: this.sequence,
+				Error:  nil,
+			}
 			this.sequence += uint64(batch.Len())
-			batch.done <- nil
 		}
 	}
 }
@@ -144,19 +183,19 @@ func (this *SeqDir) getShard(seq uint64) (map[uint64]Item, sync.RWMutex) {
 	return this.shards[index], this.shardLocks[index]
 }
 
-func (this *SeqDir) Add(seq uint64, fid, vsz uint16, vpos int64) {
+func (this *SeqDir) Add(seq uint64, fid, valueSize uint16, position int64) {
 	shard, lock := this.getShard(seq)
 
 	lock.Lock()
-	shard[seq] = Item{fid, vsz, vpos}
+	shard[seq] = Item{fid, valueSize, position}
 	lock.Unlock()
 }
 
-func (this *SeqDir) Get(seq uint64) (*Item, bool) {
-	shard, lock := this.getShard(seq)
+func (this *SeqDir) Get(offset uint64) (*Item, bool) {
+	shard, lock := this.getShard(offset)
 
 	lock.RLock()
-	item, ok := shard[seq]
+	item, ok := shard[offset]
 	lock.RUnlock()
 
 	return &item, ok
@@ -233,6 +272,11 @@ func Open(directory string) (*Seqcask, error) {
 // 	return
 // }
 
+func (this *Seqcask) Put(value []byte) (err error) {
+	// TODO: optimize for this use case as well
+	return this.PutBatch(value)
+}
+
 func (this *Seqcask) PutBatch(values ...[]byte) (err error) {
 	messages := &Messages{
 		messages: values,
@@ -249,9 +293,10 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 
-	entryLength := SIZE_SEQ + SIZE_VALUE_SIZE + entry.ValueSize + SIZE_CHECKSUM
+	entryLength := 8 + 2 + entry.ValueSize + 8
 	buffer := make([]byte, entryLength, entryLength)
 	if read, err := this.activeFile.ReadAt(buffer, entry.Position); err != nil {
+		log.Printf("error reading value from offset %v at file position %v to position %v, read %v bytes: %v", seq, entry.Position, entry.Position+int64(entryLength), read, err.Error())
 		return nil, err
 	} else if read != len(buffer) {
 		return nil, errors.New("read to short")
