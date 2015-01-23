@@ -3,9 +3,8 @@ package seqcask
 import "sync"
 
 type SeqDir struct {
-	shards     []map[uint64]Item
-	shardSize  int
-	shardLocks []sync.RWMutex
+	items map[uint64]Item
+	lock  sync.RWMutex
 }
 
 type Item struct {
@@ -15,37 +14,22 @@ type Item struct {
 }
 
 func NewSeqDir() *SeqDir {
-	shards := make([]map[uint64]Item, 256)
-	for i := 0; i < len(shards); i++ {
-		shards[i] = make(map[uint64]Item, 1024)
-	}
-
 	return &SeqDir{
-		shards:     shards,
-		shardLocks: make([]sync.RWMutex, 256, 256),
-		shardSize:  256,
+		items: make(map[uint64]Item, 1024),
 	}
-}
-
-func (this *SeqDir) getShard(seq uint64) (map[uint64]Item, sync.RWMutex) {
-	index := int(seq % uint64(this.shardSize))
-	return this.shards[index], this.shardLocks[index]
 }
 
 func (this *SeqDir) Add(seq uint64, fid, valueSize uint16, position int64) {
-	shard, lock := this.getShard(seq)
+	this.lock.Lock()
+	defer this.lock.Unlock()
 
-	lock.Lock()
-	shard[seq] = Item{fid, valueSize, position}
-	lock.Unlock()
+	this.items[seq] = Item{fid, valueSize, position}
 }
 
-func (this *SeqDir) Get(offset uint64) (*Item, bool) {
-	shard, lock := this.getShard(offset)
+func (this *SeqDir) Get(offset uint64) (Item, bool) {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
 
-	lock.RLock()
-	item, ok := shard[offset]
-	lock.RUnlock()
-
-	return &item, ok
+	item, ok := this.items[offset]
+	return item, ok
 }
