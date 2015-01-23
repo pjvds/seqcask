@@ -80,7 +80,7 @@ func (this *Seqcask) writeLoop() {
 
 	for batch := range this.writerQueue {
 		//_, err = batch.buffer.WriteTo(this.activeFile);
-		if _, err = batch.Write(this.sequence, this.activeFile); err != nil {
+		if _, err = batch.WriteTo(this.activeFile); err != nil {
 			batch.done <- BatchWriteResult{
 				Error: err,
 			}

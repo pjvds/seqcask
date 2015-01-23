@@ -16,12 +16,14 @@ type WriteBatch struct {
 }
 
 func NewWriteBatch() *WriteBatch {
-	return &WriteBatch{
+	batch := &WriteBatch{
 		buffer:    new(bytes.Buffer),
 		positions: make([]int, 0, 256),
 
 		done: make(chan BatchWriteResult, 1),
 	}
+	batch.buffer.Grow(5 * 1000 * 1024) // 5MB
+	return batch
 }
 
 // Puts a single value to this WriteBatch.
@@ -31,20 +33,17 @@ func (this *WriteBatch) Put(values ...[]byte) {
 		// store the current item position
 		this.positions = append(this.positions, startPosition)
 
-		// write offset
-		binary.Write(this.buffer, binary.LittleEndian, uint64(0))
-
 		// write value size
 		binary.Write(this.buffer, binary.LittleEndian, uint32(len(value)))
 
 		// write value
 		this.buffer.Write(value)
 
-		// get the slice of the buffer to read directly
-		// from it without effecting the buffer state.
-		rawBuffer := this.buffer.Bytes()
-		itemData := rawBuffer[startPosition:]
-		checksum := xxhash.Checksum64(itemData)
+		// create hash from value only, offset value
+		// should always be atomicly increasing and
+		// therefor can be verified. if the value size
+		// is of the checksum should fail.
+		checksum := xxhash.Checksum64(value)
 
 		// write checksum
 		binary.Write(this.buffer, binary.LittleEndian, checksum)
@@ -58,17 +57,8 @@ func (this *WriteBatch) Reset() {
 }
 
 // WriteTo writes the content of the current WriteBatch
-func (this *WriteBatch) Write(startOffset uint64, writer io.Writer) (n int64, err error) {
-	this.setOffsets(startOffset)
-	n, err = this.buffer.WriteTo(writer)
-	return
-}
-
-func (this *WriteBatch) setOffsets(startOffset uint64) {
-	bytes := this.buffer.Bytes()
-	for index, position := range this.positions {
-		binary.LittleEndian.PutUint64(bytes[position:], startOffset+uint64(index))
-	}
+func (this *WriteBatch) WriteTo(writer io.Writer) (n int, err error) {
+	return writer.Write(this.buffer.Bytes())
 }
 
 func (this *WriteBatch) Len() int {
