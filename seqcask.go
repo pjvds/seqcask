@@ -52,9 +52,7 @@ func (this *Seqcask) prepareLoop() {
 	batch := NewWriteBatch()
 
 	for messages := range this.prepareQueue {
-		for _, value := range messages.messages {
-			batch.Put(value)
-		}
+		batch.Put(messages.messages...)
 
 		this.writerQueue <- batch
 		result = <-batch.done

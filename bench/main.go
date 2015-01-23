@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/davecheney/profile"
 	"github.com/pjvds/seqcask"
 )
 
@@ -22,6 +23,14 @@ var (
 
 func main() {
 	flag.Parse()
+	// cfg := profile.Config{
+	// 	CPUProfile:     true,
+	// 	MemProfile:     true,
+	// 	BlockProfile:   true,
+	// 	NoShutdownHook: true, // do not hook SIGINT
+	// }
+	defer profile.Start(profile.CPUProfile).Stop()
+
 	directory, _ := ioutil.TempDir("", "seqcask_bench_")
 	cask := seqcask.MustOpen(directory)
 	defer cask.Close()

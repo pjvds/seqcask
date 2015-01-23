@@ -25,33 +25,35 @@ func NewWriteBatch() *WriteBatch {
 }
 
 // Puts a single value to this WriteBatch.
-func (this *WriteBatch) Put(value []byte) {
-	startPosition := this.buffer.Len()
-	// store the current item position
-	this.positions = append(this.positions, startPosition)
+func (this *WriteBatch) Put(values ...[]byte) {
+	for _, value := range values {
+		startPosition := this.buffer.Len()
+		// store the current item position
+		this.positions = append(this.positions, startPosition)
 
-	// write offset
-	if err := binary.Write(this.buffer, binary.LittleEndian, uint64(0)); err != nil {
-		panic(err)
-	}
-	// write value size
-	if err := binary.Write(this.buffer, binary.LittleEndian, uint32(len(value))); err != nil {
-		panic(err)
-	}
-	// write value
-	if _, err := this.buffer.Write(value); err != nil {
-		panic(err)
-	}
+		// write offset
+		if err := binary.Write(this.buffer, binary.LittleEndian, uint64(0)); err != nil {
+			panic(err)
+		}
+		// write value size
+		if err := binary.Write(this.buffer, binary.LittleEndian, uint32(len(value))); err != nil {
+			panic(err)
+		}
+		// write value
+		if _, err := this.buffer.Write(value); err != nil {
+			panic(err)
+		}
 
-	// get the slice of the buffer to read directly
-	// from it without effecting the buffer state.
-	rawBuffer := this.buffer.Bytes()
-	itemData := rawBuffer[startPosition:]
-	checksum := xxhash.Checksum64(itemData)
+		// get the slice of the buffer to read directly
+		// from it without effecting the buffer state.
+		rawBuffer := this.buffer.Bytes()
+		itemData := rawBuffer[startPosition:]
+		checksum := xxhash.Checksum64(itemData)
 
-	// write checksum
-	if err := binary.Write(this.buffer, binary.LittleEndian, checksum); err != nil {
-		panic(err)
+		// write checksum
+		if err := binary.Write(this.buffer, binary.LittleEndian, checksum); err != nil {
+			panic(err)
+		}
 	}
 }
 
