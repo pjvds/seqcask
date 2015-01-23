@@ -156,7 +156,6 @@ func (this *Seqcask) writeLoop() {
 				Error: err,
 			}
 		} else {
-			log.Printf("wrote %v bytes", n)
 			batch.done <- BatchWriteResult{
 				Offset: this.sequence,
 				Error:  nil,
