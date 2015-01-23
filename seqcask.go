@@ -237,7 +237,7 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 
-	entryLength := 8 + 2 + entry.ValueSize + 8
+	entryLength := 8 + 4 + entry.ValueSize + 8
 	buffer := make([]byte, entryLength, entryLength)
 	if read, err := this.activeFile.ReadAt(buffer, entry.Position); err != nil {
 		log.Printf("error reading value from offset %v at file position %v to position %v, read %v bytes: %v", seq, entry.Position, entry.Position+int64(entryLength), read, err.Error())
@@ -252,7 +252,7 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 		return nil, errors.New("checksum failed")
 	}
 
-	valueStart := int(SIZE_SEQ + SIZE_VALUE_SIZE)
+	valueStart := int(SIZE_SEQ + 4)
 	valueData := buffer[valueStart : valueStart+int(entry.ValueSize)]
 	return valueData, nil
 }

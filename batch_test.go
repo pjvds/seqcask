@@ -24,5 +24,5 @@ func TestWrite(t *testing.T) {
 
 	// length should be:
 	// offset (uint64) + value size (uint32) + value + checksum (uint64)
-	assert.Equal(t, 8+2+len(value)+8, buffer.Len())
+	assert.Equal(t, 8+4+len(value)+8, buffer.Len())
 }

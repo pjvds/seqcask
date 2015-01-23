@@ -35,7 +35,7 @@ func (this *WriteBatch) Put(value []byte) {
 		panic(err)
 	}
 	// write value size
-	if err := binary.Write(this.buffer, binary.LittleEndian, uint16(len(value))); err != nil {
+	if err := binary.Write(this.buffer, binary.LittleEndian, uint32(len(value))); err != nil {
 		panic(err)
 	}
 	// write value
