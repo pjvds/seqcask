@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,7 +28,10 @@ func main() {
 	defer os.RemoveAll(directory)
 
 	//random := seqcask.NewRandomValueGenerator(*msgSize)
-	value := []byte("mggzshawiqilnhkrlehaeejlcgwrhqdhhghvqgeuedwpzeyazhwudeoxahsywvvlxwsikadidxrsgpwndfimkkalhybcsxpmoayultaycuigbjpcjvqmcyeaxkcgvklfykpjykbfdwjbebfwlayvgdfiuceembvkijppatzrjibibdjjphwzyvlyxjslpkxvuwqrscbr")
+	value := make([]byte, *msgSize, *msgSize)
+	for index := range value {
+		value[index] = byte(rand.Intn(255))
+	}
 	//defer random.Stop()
 
 	batch := make([][]byte, *batchSize, *batchSize)
