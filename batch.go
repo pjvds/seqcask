@@ -32,17 +32,13 @@ func (this *WriteBatch) Put(values ...[]byte) {
 		this.positions = append(this.positions, startPosition)
 
 		// write offset
-		if err := binary.Write(this.buffer, binary.LittleEndian, uint64(0)); err != nil {
-			panic(err)
-		}
+		binary.Write(this.buffer, binary.LittleEndian, uint64(0))
+
 		// write value size
-		if err := binary.Write(this.buffer, binary.LittleEndian, uint32(len(value))); err != nil {
-			panic(err)
-		}
+		binary.Write(this.buffer, binary.LittleEndian, uint32(len(value)))
+
 		// write value
-		if _, err := this.buffer.Write(value); err != nil {
-			panic(err)
-		}
+		this.buffer.Write(value)
 
 		// get the slice of the buffer to read directly
 		// from it without effecting the buffer state.
@@ -51,9 +47,7 @@ func (this *WriteBatch) Put(values ...[]byte) {
 		checksum := xxhash.Checksum64(itemData)
 
 		// write checksum
-		if err := binary.Write(this.buffer, binary.LittleEndian, checksum); err != nil {
-			panic(err)
-		}
+		binary.Write(this.buffer, binary.LittleEndian, checksum)
 	}
 }
 
