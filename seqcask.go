@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"sync"
-	"time"
 
 	"github.com/OneOfOne/xxhash/native"
 	//"github.com/ncw/directio"
@@ -115,16 +114,6 @@ func (this *Seqcask) writeLoop() {
 	}
 }
 
-func (this *Seqcask) syncLoop() {
-	for {
-		<-time.After(1 * time.Second)
-
-		if err := this.activeFile.Sync(); err != nil {
-			panic(err)
-		}
-	}
-}
-
 type Item struct {
 	FileId    uint16
 	ValueSize uint16
@@ -214,7 +203,6 @@ func Open(directory string) (*Seqcask, error) {
 	go cask.prepareLoop()
 	go cask.prepareLoop()
 	go cask.writeLoop()
-	go cask.syncLoop()
 	return cask, nil
 }
 
