@@ -54,38 +54,18 @@ func main() {
 
 	var done bool
 
-	work.Add(1)
-	go func() {
-		for !done {
-			if err := cask.PutBatch(batch...); err != nil {
-				panic(err)
+	for i := 0; i < 6; i++ {
+		work.Add(1)
+		go func() {
+			for !done {
+				if err := cask.PutBatch(batch...); err != nil {
+					panic(err)
+				}
+				atomic.AddInt64(putted, int64(len(batch)))
 			}
-			atomic.AddInt64(putted, int64(len(batch)))
-		}
-		work.Done()
-	}()
-
-	work.Add(1)
-	go func() {
-		for !done {
-			if err := cask.PutBatch(batch...); err != nil {
-				panic(err)
-			}
-			atomic.AddInt64(putted, int64(len(batch)))
-		}
-		work.Done()
-	}()
-
-	work.Add(1)
-	go func() {
-		for !done {
-			if err := cask.PutBatch(batch...); err != nil {
-				panic(err)
-			}
-			atomic.AddInt64(putted, int64(len(batch)))
-		}
-		work.Done()
-	}()
+			work.Done()
+		}()
+	}
 
 	<-time.After(*duration)
 	done = true
