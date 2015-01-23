@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"time"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
+
 	"github.com/pjvds/seqcask"
 )
 
@@ -41,35 +43,35 @@ func main() {
 
 	work.Add(1)
 	go func() {
-		for !done{
+		for !done {
 			if err := cask.PutBatch(batch...); err != nil {
 				panic(err)
 			}
 			atomic.AddInt64(putted, int64(len(batch)))
 		}
-			work.Done()
+		work.Done()
 	}()
 
 	work.Add(1)
 	go func() {
-		for !done{
+		for !done {
 			if err := cask.PutBatch(batch...); err != nil {
 				panic(err)
 			}
 			atomic.AddInt64(putted, int64(len(batch)))
 		}
-			work.Done()
+		work.Done()
 	}()
 
 	work.Add(1)
 	go func() {
-		for !done{
+		for !done {
 			if err := cask.PutBatch(batch...); err != nil {
 				panic(err)
 			}
 			atomic.AddInt64(putted, int64(len(batch)))
 		}
-			work.Done()
+		work.Done()
 	}()
 
 	<-time.After(*duration)
@@ -79,6 +81,15 @@ func main() {
 	cask.Sync()
 
 	elapsed := time.Since(startedAt)
-	totalMb := float64(*putted * int64(*msgSize)) / float64(1000 * 1024)
+	totalMb := float64(*putted*int64(*msgSize)) / float64(1000*1024)
 	fmt.Printf("%v messages written in %v, %.0fmsg/s, %0.3fmb/s\n", *putted, elapsed, float64(*putted)/elapsed.Seconds(), totalMb/elapsed.Seconds())
+
+	dataFilename := filepath.Join(directory, "1.data")
+	stats, err := os.Stat(dataFilename)
+	if err != nil {
+		fmt.Printf("failed to stat %v: %v", dataFilename, err.Error())
+	} else {
+		fmt.Printf("%v: %vmb", dataFilename, stats.Size()/int64(1048576))
+
+	}
 }
