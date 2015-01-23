@@ -62,13 +62,16 @@ func (this *Seqcask) prepareLoop() {
 			continue
 		}
 
-		/*for index, value := range messages.messages {
-			offset := result.Offset + uint64(index)
-			vsz := uint16(len(value))
-			pos := result.FileOffset + int64(batch.positions[index])
+		items := make([]Item, len(messages.messages), len(messages.messages))
+		for index, value := range messages.messages {
+			items[index] = Item{
+				FileId:    0,                  // TODO: set
+				ValueSize: uint16(len(value)), // TODO: make uint32
+				Position:  result.FileOffset + int64(batch.positions[index]),
+			}
+		}
 
-			this.seqdir.Add(offset, 0, vsz, pos)
-		}*/
+		this.seqdir.AddAll(result.Offset, items...)
 		messages.done <- nil
 
 		batch.Reset()
@@ -131,6 +134,9 @@ func Open(directory string) (*Seqcask, error) {
 		writerQueue:  make(chan *WriteBatch),
 	}
 
+	go cask.prepareLoop()
+	go cask.prepareLoop()
+	go cask.prepareLoop()
 	go cask.prepareLoop()
 	go cask.prepareLoop()
 	go cask.prepareLoop()
