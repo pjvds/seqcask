@@ -1,7 +1,6 @@
 package seqcask
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -46,22 +45,19 @@ type Seqcask struct {
 	seqdir *SeqDir
 
 	prepareQueue chan *Messages
-	writerQueue  chan *Batch
+	writerQueue  chan *WriteBatch
 }
 
 func (this *Seqcask) prepareLoop() {
 	var result BatchWriteResult
-	batch := Batch{
-		buffer: new(bytes.Buffer),
-		done:   make(chan BatchWriteResult, 1),
-	}
+	batch := NewWriteBatch()
 
 	for messages := range this.prepareQueue {
 		for _, value := range messages.messages {
 			batch.Put(value)
 		}
 
-		this.writerQueue <- &batch
+		this.writerQueue <- batch
 		result = <-batch.done
 
 		if result.Error != nil {
@@ -183,7 +179,7 @@ func Open(directory string) (*Seqcask, error) {
 		activeFile:   file,
 		seqdir:       NewSeqDir(),
 		prepareQueue: make(chan *Messages, 256),
-		writerQueue:  make(chan *Batch),
+		writerQueue:  make(chan *WriteBatch),
 	}
 
 	go cask.prepareLoop()
