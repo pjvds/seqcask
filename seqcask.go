@@ -13,6 +13,7 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/OneOfOne/xxhash/native"
+	"launchpad.net/gommap"
 	//"github.com/ncw/directio"
 )
 
@@ -213,6 +214,65 @@ func Open(directory string, size int64) (*Seqcask, error) {
 func (this *Seqcask) Put(value []byte) (err error) {
 	// TODO: optimize for this use case as well
 	return this.PutBatch(value)
+}
+
+func (this *Seqcask) PutBatchDirect(values ...[]byte) (err error) {
+	// the total size the data will take at storage level
+	totalSize := len(values) * (4+8)
+	for _, value := range values {
+		totalSize += len(value)
+	}
+
+	var data gommap.MMap
+	data, err = gommap.MapRegion(this.activeFile.Fd(), this.activeFilePosition, int64(totalSize), gommap.PROT_WRITE, gommap.MAP_FIXED | gommap.MAP_PRIVATE)
+
+	if err != nil {
+		err = fmt.Errorf("cannot map reqion: %v", err.Error())
+		return
+	}
+
+	if err = data.Advise(gommap.MADV_SEQUENTIAL | gommap.MADV_WILLNEED); err != nil {
+		err = nil
+		glog.Warningf("failed to advice mmap: %v", err.Error())
+	} 
+
+	var position int = -1
+
+	for _, value := range values {
+		// store the relative start position of this value
+		// this us used to calculate the file position
+		// when adding the seqdir items after a successfull write
+		// TODO: this.positions = append(this.positions, this.activeFilePosition+position)
+
+		// write value size
+		valueSize := uint32(len(value))
+		position++ ; data[position] = byte(valueSize >> 24)
+		position++ ; data[position] = byte(valueSize >> 16)
+		position++ ; data[position] = byte(valueSize >> 8)
+		position++ ; data[position] = byte(valueSize >> 0)
+
+		for _, b := range value {
+			position++ ; data[position] = b
+		}
+
+		// create checksum
+		checksum := xxhash.Checksum64(value)
+		position++ ; data[position] = byte(checksum >> 56)
+		position++ ; data[position] = byte(checksum >> 48)
+		position++ ; data[position] = byte(checksum >> 40)
+		position++ ; data[position] = byte(checksum >> 32)
+		position++ ; data[position] = byte(checksum >> 24)
+		position++ ; data[position] = byte(checksum >> 16)
+		position++ ; data[position] = byte(checksum >> 8)
+		position++ ; data[position] = byte(checksum >> 0)
+	}
+
+	if err = data.UnsafeUnmap(); err != nil{
+		return
+	}
+
+	this.activeFilePosition += int64(position)
+	return
 }
 
 func (this *Seqcask) PutBatch(values ...[]byte) (err error) {

@@ -25,24 +25,32 @@ func BenchmarkPut(b *testing.B) {
 	cask.Sync()
 }
 
-func BenchmarkPutBatch(b *testing.B) {
+func BenchmarkPutDirect(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
 	cask := seqcask.MustOpen(directory, 0)
 	random := seqcask.NewRandomValueGenerator(200)
 
-	values := make([][]byte, 1000*1000, 1000*1000)
-	for index := range values {
-		values[index] = <-random.Values
-	}
-
-	random.Stop()
-
-	b.SetBytes(int64(len(values) * 200))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := cask.PutBatch(values...); err != nil {
+		value := <-random.Values
+		if err := cask.PutBatchDirect(value); err != nil {
+			b.Fatalf("failed to put: %v", err.Error())
+		}
+	}
+	cask.Sync()
+}
+
+func BenchmarkPutBatch(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustOpen(directory, 5000)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := cask.PutBatch([]byte("pieter joost van de sande")); err != nil {
 			b.Fatalf("failed to put: %v", err.Error())
 		}
 	}
@@ -80,6 +88,24 @@ func TestPut(t *testing.T) {
 			t.Fatalf("failed to put: %v", err.Error())
 		}
 	}
+}
+
+func TestPutDirect(t *testing.T) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	b, err := seqcask.Open(directory, 0)
+	if err != nil {
+		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
+	}
+	defer b.Close()
+
+	putValues := [][]byte{
+		[]byte("pieter joost van de sande"),
+		[]byte("tomas roos"),
+	}
+
+	b.PutBatchDirect(putValues...)
 }
 
 func TestPutGetRoundtrup(t *testing.T) {
