@@ -2,14 +2,13 @@ package seqcask
 
 import (
 	"bytes"
-	"encoding/binary"
 	"io"
 
 	"github.com/OneOfOne/xxhash"
 )
 
 type WriteBatch struct {
-	buffer    *bytes.Buffer
+	buffer    bytes.Buffer
 	positions []int
 
 	done chan BatchWriteResult
@@ -17,7 +16,6 @@ type WriteBatch struct {
 
 func NewWriteBatch() *WriteBatch {
 	batch := &WriteBatch{
-		buffer:    new(bytes.Buffer),
 		positions: make([]int, 0, 256),
 
 		done: make(chan BatchWriteResult, 1),
@@ -29,24 +27,23 @@ func NewWriteBatch() *WriteBatch {
 // Puts a single value to this WriteBatch.
 func (this *WriteBatch) Put(values ...[]byte) {
 	for _, value := range values {
-		startPosition := this.buffer.Len()
 		// store the current item position
+		startPosition := this.buffer.Len()
 		this.positions = append(this.positions, startPosition)
 
 		// write value size
-		binary.Write(this.buffer, binary.LittleEndian, uint32(len(value)))
+		valueSize := uint32(len(value))
+		this.buffer.Write([]byte{byte(valueSize >> 24), byte(valueSize >> 16), byte(valueSize >> 8), byte(valueSize >> 0)})
 
 		// write value
 		this.buffer.Write(value)
 
-		// create hash from value only, offset value
-		// should always be atomicly increasing and
-		// therefor can be verified. if the value size
-		// is of the checksum should fail.
+		// create checksum
 		checksum := xxhash.Checksum64(value)
 
 		// write checksum
-		binary.Write(this.buffer, binary.LittleEndian, checksum)
+		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),
+		    byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
 	}
 }
 
@@ -54,6 +51,10 @@ func (this *WriteBatch) Put(values ...[]byte) {
 func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
 	this.positions = this.positions[0:0]
+}
+
+func (this *WriteBatch) Bytes() []byte {
+	return this.buffer.Bytes()
 }
 
 // WriteTo writes the content of the current WriteBatch

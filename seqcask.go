@@ -9,6 +9,9 @@ import (
 	"os"
 	"path"
 
+	"time"
+	"github.com/golang/glog"
+
 	"github.com/OneOfOne/xxhash/native"
 	//"github.com/ncw/directio"
 )
@@ -80,19 +83,39 @@ func (this *Seqcask) prepareLoop() {
 
 func (this *Seqcask) writeLoop() {
 	var err error
+	var written int
+
+	var writeStarted time.Time
+	var writeFinished time.Time
 
 	for batch := range this.writerQueue {
-		//_, err = batch.buffer.WriteTo(this.activeFile);
-		if _, err = batch.WriteTo(this.activeFile); err != nil {
+		if glog.V(2) {
+			writeStarted = time.Now()
+			glog.Infof("writer dequeue latency: %v", (writeStarted.Sub(writeFinished)))
+		}
+
+		// WriteAt doesn't use a atomic operation to synchronize position and
+		// only uses a single syscall instead of two.
+		written, err = this.activeFile.WriteAt(batch.Bytes(), this.activeFilePosition)
+
+		if err != nil {
 			batch.done <- BatchWriteResult{
 				Error: err,
 			}
 		} else {
+			this.activeFilePosition += int64(written)
+
 			batch.done <- BatchWriteResult{
 				Offset: this.sequence,
 				Error:  nil,
 			}
 			this.sequence += uint64(batch.Len())
+		}
+
+		if glog.V(2) {
+			elapsed := time.Since(writeStarted)
+			glog.Infof("written %v bytes in %v", written, elapsed)
+			writeFinished = time.Now()
 		}
 	}
 }
@@ -103,15 +126,17 @@ type header struct {
 	vsz    uint16
 }
 
-func MustOpen(directory string) *Seqcask {
-	if seqcask, err := Open(directory); err != nil {
+func MustOpen(directory string, size int64) *Seqcask {
+	if seqcask, err := Open(directory, size); err != nil {
 		panic(err)
 	} else {
 		return seqcask
 	}
 }
 
-func Open(directory string) (*Seqcask, error) {
+func Open(directory string, size int64) (*Seqcask, error) {
+	const PREPARERS_COUNT = 6
+
 	files, err := ioutil.ReadDir(directory)
 	if err != nil {
 		return nil, err
@@ -131,15 +156,15 @@ func Open(directory string) (*Seqcask, error) {
 		activeFile:   file,
 		seqdir:       NewSeqDir(),
 		prepareQueue: make(chan *Messages, 256),
-		writerQueue:  make(chan *WriteBatch),
+		writerQueue:  make(chan *WriteBatch, PREPARERS_COUNT),
+	}
+	if err := cask.activeFile.Truncate(size); err != nil {
+		return nil, err
 	}
 
-	go cask.prepareLoop()
-	go cask.prepareLoop()
-	go cask.prepareLoop()
-	go cask.prepareLoop()
-	go cask.prepareLoop()
-	go cask.prepareLoop()
+	for i := 0; i < PREPARERS_COUNT; i++ {
+		go cask.prepareLoop()
+	}
 	go cask.writeLoop()
 	return cask, nil
 }

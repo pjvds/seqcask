@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/golang/glog"
 
 	"github.com/pjvds/seqcask"
 )
@@ -18,15 +19,21 @@ var (
 	msgSize   = flag.Int("msgsize", 200, "the size of the messages in byte")
 	duration  = flag.Duration("duration", 10*time.Second, "the time to run the benchmark")
 	batchSize = flag.Int("batchsize", 64, "the number of message to batch in a single put")
+	dir       = flag.String("dir", "", "the directory to store the data files")
 )
 
 func main() {
 	flag.Parse()
+	glog.Info("starting...")
 
 	//defer profile.Start(profile.CPUProfile).Stop()
 
 	directory, _ := ioutil.TempDir("", "seqcask_bench_")
-	cask := seqcask.MustOpen(directory)
+	if len(*dir) > 0 {
+		directory = *dir
+	}
+
+	cask := seqcask.MustOpen(directory, 30000000000)
 	defer cask.Close()
 	defer os.RemoveAll(directory)
 
