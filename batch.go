@@ -10,10 +10,44 @@ type WriteBatch struct {
 	buffer     bytes.Buffer
 	positions  []int
 	valueSizes []uint32
+
+	// used to store the seqdir items while
+	// writing to append them all at once
+	itemBuffer []Item
+
+	writeErr      error
+	writePosition int64
+	writeSequence uint64
+
+	writeDone chan struct{}
 }
 
 func NewWriteBatch() *WriteBatch {
-	return new(WriteBatch)
+	batch := new(WriteBatch)
+	batch.writeDone = make(chan struct{}, 1)
+
+	return batch
+}
+
+func (this *WriteBatch) getSeqdirItems() []Item {
+	msgCount := this.Len()
+	// make sure we have enought capacity in the item slice
+	// we only care about capacity, not about the content so
+	// recreating it is not a problem at all
+	if len(this.itemBuffer) < msgCount {
+		this.itemBuffer = make([]Item, msgCount, msgCount)
+	}
+
+	// create seqdir items for every message
+	for index := 0; index < msgCount; index++ {
+		this.itemBuffer[index] = Item{
+			FileId:    0, // TODO: set
+			ValueSize: this.valueSizes[index],
+			Position:  this.writePosition + int64(this.positions[index]),
+		}
+	}
+
+	return this.itemBuffer[0:msgCount]
 }
 
 // Puts a single value to this WriteBatch.
