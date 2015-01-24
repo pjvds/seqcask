@@ -242,8 +242,10 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 	}
 
 	valueData := buffer[4:4+valueSize]
-	checksum := binary.BigEndian.Uint64(buffer[4+valueSize:])
-	if xxhash.Checksum64(valueData) != checksum {
+	checksumData := buffer[4+valueSize:]
+
+	// compare checksum of value to checksum from storage
+	if xxhash.Checksum64(valueData) != binary.BigEndian.Uint64(checksumData) {
 		return nil, errors.New("checksum failed")
 	}
 
