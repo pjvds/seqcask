@@ -25,33 +25,23 @@ func BenchmarkPut(b *testing.B) {
 	cask.Sync()
 }
 
-func BenchmarkPutDirect(b *testing.B) {
-	directory, _ := ioutil.TempDir("", "bitcast_test_")
-	defer os.RemoveAll(directory)
-
-	cask := seqcask.MustOpen(directory, 0)
-	random := seqcask.NewRandomValueGenerator(200)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		value := <-random.Values
-		if err := cask.PutBatchDirect(value); err != nil {
-			b.Fatalf("failed to put: %v", err.Error())
-		}
-	}
-	cask.Sync()
-}
-
 func BenchmarkPutBatch(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
 	cask := seqcask.MustOpen(directory, 5000)
+	batch := seqcask.NewWriteBatch()
+	batch.Put(
+		[]byte("agxtzwepimobpnikebkhftxcfslqtnnsgihzdcuvgtlptjxjxrblxnonvazjeqiahfxjszxcpxoqlxudrsndeuodeqaeiotrczusvftchpxnxfmkejvqqpvrfcvpcuafplfwpimrmklftbrdjmfaxapnqpcvcsmgnisczvjnypmyffexxuzovbwzrjghjtziudfgbqbrhazcdcyzkxqjbxnoscpuvzaoawwclllfbwmkhhqxcnavfwfglmmaamf"),
+		[]byte("smlqfbwpqsethbgweampbwfvcuktntarrowoicnooqoedmlcjyhyirfcwzejgafzgeqhjgocgredqotjivpludcfbusccknredakjjfzimlamxhddxiiqqwctzrmsfoymwkjuwagmghesefpyjrxsagwbpyuvwcnjhusfwuvalxmstctvhljuocrefeehccwdhjmwlyluycjsuzkwcaywerjdzywatuxnpuluaixskgmtxqmkrwwwffhiysnzzy"),
+		[]byte("mtuaizgmqjqsvasmapkdxnygadhwrzusaiffteljlrmffwtzooljihllqpgeeokbawevvidxdtwnynjtrlxbztlaotfvvulqwdashfaviitwzzccqdvausmqzkmovtuisjnjdwqbsyfdilkgpriddxgsqmveenqihxiwkzpuasxbfhfajazirfwhntrwsqmpxbxoosqlvspomqbifcofbnhmdjpxfhuvorbhfrzlvyzpmacigypavxtnjbtbdgh"),
+		[]byte("xuonnyzlxxpzsbrmlvtfwdswmsotusqtprdomlfpxfwwwvozusdgzbsflqwtqibczwiksefczjjzcorufmxujxjqvematcfeofmgqigklnkqmsjihansqixxcjabsnutrusscmofkujfmufbgbqxlbgzuwnpwfvzikigyhfhnbswdsiukjlsztjtqkyoertlvylptacsqapmjermfsfpkqsvvabtfleygskogwvflwpjfzgvvuyoupiqlvvphhs"),
+		[]byte("bmgmbcwrmsmgwnkeyhahnitexivcvxblaptgcaqcozpjyetpmgnmndzvlysmxfijogjytcczwohqijcojdhotfnavijupuaruyywztaqqcmmnbxrfwszcfzyrzieoudhjsxfrulzbvpcbmpzuifciejnyyqbfwviyzlyhmvkcgpqcjdacrfszhtmzejdyqfjuiojovoiyuwbfsaxbteifqmciznabveigqlkwczwshdhzenjlmhgdclhkgtmmaj"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := cask.PutBatch([]byte("pieter joost van de sande")); err != nil {
-			b.Fatalf("failed to put: %v", err.Error())
+		if err := cask.Write(batch); err != nil {
+			b.Fatalf("failed to write batch: %v", err.Error())
 		}
 	}
 	cask.Sync()
@@ -88,24 +78,6 @@ func TestPut(t *testing.T) {
 			t.Fatalf("failed to put: %v", err.Error())
 		}
 	}
-}
-
-func TestPutDirect(t *testing.T) {
-	directory, _ := ioutil.TempDir("", "bitcast_test_")
-	defer os.RemoveAll(directory)
-
-	b, err := seqcask.Open(directory, 0)
-	if err != nil {
-		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
-	}
-	defer b.Close()
-
-	putValues := [][]byte{
-		[]byte("pieter joost van de sande"),
-		[]byte("tomas roos"),
-	}
-
-	b.PutBatchDirect(putValues...)
 }
 
 func TestPutGetRoundtrup(t *testing.T) {

@@ -7,20 +7,13 @@ import (
 )
 
 type WriteBatch struct {
-	buffer    bytes.Buffer
-	positions []int
-
-	done chan BatchWriteResult
+	buffer     bytes.Buffer
+	positions  []int
+	valueSizes []uint32
 }
 
 func NewWriteBatch() *WriteBatch {
-	batch := &WriteBatch{
-		positions: make([]int, 0, 256),
-
-		done: make(chan BatchWriteResult, 1),
-	}
-	batch.buffer.Grow(5 * 1000 * 1024) // 5MB
-	return batch
+	return new(WriteBatch)
 }
 
 // Puts a single value to this WriteBatch.
@@ -28,7 +21,6 @@ func (this *WriteBatch) Put(values ...[]byte) {
 	for _, value := range values {
 		// store the current item position
 		startPosition := this.buffer.Len()
-		this.positions = append(this.positions, startPosition)
 
 		// write value size
 		valueSize := uint32(len(value))
@@ -42,12 +34,13 @@ func (this *WriteBatch) Put(values ...[]byte) {
 
 		// write checksum
 		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),
-		    byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
+			byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
 
 		// store the relative start position of this value
 		// this us used to calculate the file position
 		// when adding the seqdir items after a successfull write
 		this.positions = append(this.positions, startPosition)
+		this.valueSizes = append(this.valueSizes, valueSize)
 	}
 }
 
@@ -55,6 +48,7 @@ func (this *WriteBatch) Put(values ...[]byte) {
 func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
 	this.positions = this.positions[0:0]
+	this.valueSizes = this.valueSizes[0:0]
 }
 
 func (this *WriteBatch) Bytes() []byte {

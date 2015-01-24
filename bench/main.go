@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"github.com/golang/glog"
 
 	"github.com/pjvds/seqcask"
@@ -44,9 +45,9 @@ func main() {
 	}
 	//defer random.Stop()
 
-	batch := make([][]byte, *batchSize, *batchSize)
-	for index := range batch {
-		batch[index] = value
+	batch := seqcask.NewWriteBatch()
+	for index := 0; index < *batchSize; index++ {
+		batch.Put(value)
 	}
 	putted := new(int64)
 
@@ -59,10 +60,10 @@ func main() {
 		work.Add(1)
 		go func() {
 			for !done {
-				if err := cask.PutBatch(batch...); err != nil {
+				if err := cask.Write(batch); err != nil {
 					panic(err)
 				}
-				atomic.AddInt64(putted, int64(len(batch)))
+				atomic.AddInt64(putted, int64(batch.Len()))
 			}
 			work.Done()
 		}()

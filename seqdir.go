@@ -9,7 +9,7 @@ type SeqDir struct {
 
 type Item struct {
 	FileId    uint16
-	ValueSize uint16
+	ValueSize uint32
 	Position  int64
 }
 
@@ -19,7 +19,7 @@ func NewSeqDir() *SeqDir {
 	}
 }
 
-func (this *SeqDir) Add(seq uint64, fid, valueSize uint16, position int64) {
+func (this *SeqDir) Add(seq uint64, fid uint16, valueSize uint32, position int64) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 

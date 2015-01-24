@@ -27,118 +27,18 @@ const (
 	SIZE_VALUE_SIZE = 16 / 8
 )
 
-type Messages struct {
-	messages [][]byte
-
-	done chan error
-}
-
-type BatchWriteResult struct {
-	FileOffset int64
-	Offset     uint64
-	Error      error
-}
-
 type Seqcask struct {
 	activeFile         *os.File
 	activeFilePosition int64
+	batch              WriteBatch
 
 	sequence uint64
 
 	seqdir *SeqDir
 
-	prepareQueue chan *Messages
-	writerQueue  chan *WriteBatch
-}
-
-func (this *Seqcask) prepareLoop() {
-	var result BatchWriteResult
-	var msgCount int
-
-	batch := NewWriteBatch()
-	items := make([]Item, 0)
-
-	for messages := range this.prepareQueue {
-		msgCount = len(messages.messages)
-
-		batch.Put(messages.messages...)
-
-		this.writerQueue <- batch
-		result = <-batch.done
-
-		if result.Error != nil {
-			messages.done <- result.Error
-			continue
-		}
-
-		// make sure we have enought capacity in the item slice
-		// we only care about capacity, not about the content so
-		// recreating it is not a problem at all
-		if cap(items) < msgCount {
-			items = make([]Item, msgCount, msgCount)
-		}
-
-		// create seqdir items for every message
-		for index, value := range messages.messages {
-			items[index] = Item{
-				FileId:    0,                  // TODO: set
-				ValueSize: uint16(len(value)), // TODO: make uint32
-				Position:  result.FileOffset + int64(batch.positions[index]),
-			}
-		}
-
-		// add all seqdir items to the seqdir
-		this.seqdir.AddAll(result.Offset, items[:msgCount]...)
-
-		messages.done <- nil
-
-		batch.Reset()
-	}
-}
-
-func (this *Seqcask) writeLoop() {
-	var err error
-	var written int
-
-	var writeStarted time.Time
-	var writeFinished time.Time
-
-	for batch := range this.writerQueue {
-		if glog.V(2) {
-			writeStarted = time.Now()
-			glog.Infof("writer dequeue latency: %v", (writeStarted.Sub(writeFinished)))
-		}
-
-		// WriteAt doesn't use a atomic operation to synchronize position and
-		// only uses a single syscall instead of two.
-		written, err = this.activeFile.WriteAt(batch.Bytes(), this.activeFilePosition)
-
-		if err != nil {
-			batch.done <- BatchWriteResult{
-				Error: err,
-			}
-		} else {
-			this.activeFilePosition += int64(written)
-
-			batch.done <- BatchWriteResult{
-				Offset: this.sequence,
-				Error:  nil,
-			}
-			this.sequence += uint64(batch.Len())
-		}
-
-		if glog.V(2) {
-			elapsed := time.Since(writeStarted)
-			glog.Infof("written %v bytes in %v", written, elapsed)
-			writeFinished = time.Now()
-		}
-	}
-}
-
-type header struct {
-	tstamp uint64
-	ksz    uint16
-	vsz    uint16
+	// used to store the seqdir items while
+	// writing to append them all at once
+	itemBuffer []Item
 }
 
 func MustOpen(directory string, size int64) *Seqcask {
@@ -150,7 +50,6 @@ func MustOpen(directory string, size int64) *Seqcask {
 }
 
 func Open(directory string, size int64) (*Seqcask, error) {
-	const PREPARERS_COUNT = 6
 
 	files, err := ioutil.ReadDir(directory)
 	if err != nil {
@@ -168,35 +67,77 @@ func Open(directory string, size int64) (*Seqcask, error) {
 	}
 
 	cask := &Seqcask{
-		activeFile:   file,
-		seqdir:       NewSeqDir(),
-		prepareQueue: make(chan *Messages, 256),
-		writerQueue:  make(chan *WriteBatch, PREPARERS_COUNT),
+		activeFile: file,
+		seqdir:     NewSeqDir(),
+		itemBuffer: make([]Item, 25, 25),
 	}
 	if err := cask.activeFile.Truncate(size); err != nil {
 		return nil, err
 	}
 
-	for i := 0; i < PREPARERS_COUNT; i++ {
-		go cask.prepareLoop()
-	}
-	go cask.writeLoop()
 	return cask, nil
 }
 
 func (this *Seqcask) Put(value []byte) (err error) {
+	batch := NewWriteBatch()
+	batch.Put(value)
+
 	// TODO: optimize for this use case as well
-	return this.PutBatch(value)
+	return this.Write(batch)
 }
 
-func (this *Seqcask) PutBatch(values ...[]byte) (err error) {
-	messages := &Messages{
-		messages: values,
-		done:     make(chan error, 1),
+func (this *Seqcask) Write(batch *WriteBatch) (err error) {
+	var writeStarted time.Time
+	if glog.V(2) {
+		writeStarted = time.Now()
 	}
-	this.prepareQueue <- messages
-	// TODO: set seqdir items
-	return <-messages.done
+	var written int
+	filePositionAtStart := this.activeFilePosition
+	sequenceAtStart := this.sequence
+
+	// WriteAt doesn't use a atomic operation to synchronize position and
+	// only uses a single syscall instead of two.
+	written, err = this.activeFile.WriteAt(batch.Bytes(), this.activeFilePosition)
+
+	if err != nil {
+		if glog.V(1) {
+			glog.Warningf("error writing %v bytes to active file %v at position: %v",
+				batch.Len(), this.activeFile.Name(), this.activeFilePosition)
+		}
+		return
+	}
+
+	// Advance position because we succeeded.
+	this.activeFilePosition += int64(written)
+	this.sequence += uint64(batch.Len())
+
+	msgCount := batch.Len()
+
+	// make sure we have enought capacity in the item slice
+	// we only care about capacity, not about the content so
+	// recreating it is not a problem at all
+	if len(this.itemBuffer) < msgCount {
+		this.itemBuffer = make([]Item, msgCount, msgCount)
+	}
+
+	// create seqdir items for every message
+	for index := 0; index < msgCount; index++ {
+		this.itemBuffer[index] = Item{
+			FileId:    0, // TODO: set
+			ValueSize: batch.valueSizes[index],
+			Position:  filePositionAtStart + int64(batch.positions[index]),
+		}
+	}
+
+	// add all seqdir items to the seqdir
+	this.seqdir.AddAll(sequenceAtStart, this.itemBuffer[:msgCount]...)
+
+	if glog.V(2) {
+		elapsed := time.Since(writeStarted)
+		glog.Infof("written %v bytes in %v", written, elapsed)
+	}
+
+	return
 }
 
 func (this *Seqcask) Get(seq uint64) ([]byte, error) {
