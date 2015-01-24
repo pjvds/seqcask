@@ -52,9 +52,14 @@ type Seqcask struct {
 
 func (this *Seqcask) prepareLoop() {
 	var result BatchWriteResult
+	var msgCount int
+
 	batch := NewWriteBatch()
+	items := make([]Item, 0)
 
 	for messages := range this.prepareQueue {
+		msgCount = len(messages.messages)
+
 		batch.Put(messages.messages...)
 
 		this.writerQueue <- batch
@@ -65,7 +70,14 @@ func (this *Seqcask) prepareLoop() {
 			continue
 		}
 
-		items := make([]Item, len(messages.messages), len(messages.messages))
+		// make sure we have enought capacity in the item slice
+		// we only care about capacity, not about the content so
+		// recreating it is not a problem at all
+		if cap(items) < msgCount {
+			items = make([]Item, msgCount, msgCount)
+		}
+
+		// create seqdir items for every message
 		for index, value := range messages.messages {
 			items[index] = Item{
 				FileId:    0,                  // TODO: set
@@ -74,7 +86,9 @@ func (this *Seqcask) prepareLoop() {
 			}
 		}
 
-		this.seqdir.AddAll(result.Offset, items...)
+		// add all seqdir items to the seqdir
+		this.seqdir.AddAll(result.Offset, items[:msgCount]...)
+
 		messages.done <- nil
 
 		batch.Reset()
@@ -217,7 +231,8 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 
-	entryLength := 8 + 4 + entry.ValueSize + 8
+	valueSize := int(entry.ValueSize)
+	entryLength := 4 + valueSize + 8
 	buffer := make([]byte, entryLength, entryLength)
 	if read, err := this.activeFile.ReadAt(buffer, entry.Position); err != nil {
 		log.Printf("error reading value from offset %v at file position %v to position %v, read %v bytes: %v", seq, entry.Position, entry.Position+int64(entryLength), read, err.Error())
@@ -226,14 +241,12 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 		return nil, errors.New("read to short")
 	}
 
-	checksumData := buffer[:len(buffer)-SIZE_CHECKSUM]
-	checksum := binary.LittleEndian.Uint64(buffer[len(buffer)-SIZE_CHECKSUM:])
-	if xxhash.Checksum64(checksumData) != checksum {
+	valueData := buffer[4:4+valueSize]
+	checksum := binary.BigEndian.Uint64(buffer[4+valueSize:])
+	if xxhash.Checksum64(valueData) != checksum {
 		return nil, errors.New("checksum failed")
 	}
 
-	valueStart := int(SIZE_SEQ + 4)
-	valueData := buffer[valueStart : valueStart+int(entry.ValueSize)]
 	return valueData, nil
 }
 

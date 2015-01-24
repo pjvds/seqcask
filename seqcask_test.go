@@ -13,7 +13,7 @@ func BenchmarkPut(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustOpen(directory)
+	cask := seqcask.MustOpen(directory, 0)
 	random := seqcask.NewRandomValueGenerator(200)
 
 	b.ResetTimer()
@@ -29,7 +29,7 @@ func BenchmarkPutBatch(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustOpen(directory)
+	cask := seqcask.MustOpen(directory, 0)
 	random := seqcask.NewRandomValueGenerator(200)
 
 	values := make([][]byte, 1000*1000, 1000*1000)
@@ -53,7 +53,7 @@ func TestOpen(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory)
+	b, err := seqcask.Open(directory, 0)
 	if err != nil {
 		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
 	}
@@ -64,7 +64,7 @@ func TestPut(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory)
+	b, err := seqcask.Open(directory, 0)
 	if err != nil {
 		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
 	}
@@ -86,7 +86,7 @@ func TestPutGetRoundtrup(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory)
+	b, err := seqcask.Open(directory, 0)
 	if err != nil {
 		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
 	}

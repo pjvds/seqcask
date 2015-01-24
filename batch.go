@@ -2,7 +2,6 @@ package seqcask
 
 import (
 	"bytes"
-	"io"
 
 	"github.com/OneOfOne/xxhash"
 )
@@ -44,6 +43,11 @@ func (this *WriteBatch) Put(values ...[]byte) {
 		// write checksum
 		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),
 		    byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
+
+		// store the relative start position of this value
+		// this us used to calculate the file position
+		// when adding the seqdir items after a successfull write
+		this.positions = append(this.positions, startPosition)
 	}
 }
 
@@ -55,11 +59,6 @@ func (this *WriteBatch) Reset() {
 
 func (this *WriteBatch) Bytes() []byte {
 	return this.buffer.Bytes()
-}
-
-// WriteTo writes the content of the current WriteBatch
-func (this *WriteBatch) WriteTo(writer io.Writer) (n int, err error) {
-	return writer.Write(this.buffer.Bytes())
 }
 
 func (this *WriteBatch) Len() int {

@@ -1,7 +1,6 @@
 package seqcask_test
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/pjvds/seqcask"
@@ -19,10 +18,9 @@ func TestWrite(t *testing.T) {
 	value := []byte("foobar")
 	batch.Put(value)
 
-	buffer := new(bytes.Buffer)
-	batch.Write(0, buffer)
+	buffer := batch.Bytes() 
 
 	// length should be:
-	// offset (uint64) + value size (uint32) + value + checksum (uint64)
-	assert.Equal(t, 8+4+len(value)+8, buffer.Len())
+	// value size (uint32) + value + checksum (uint64)
+	assert.Equal(t, 4+len(value)+8, len(buffer))
 }
