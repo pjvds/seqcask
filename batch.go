@@ -2,6 +2,7 @@ package seqcask
 
 import (
 	"bytes"
+	"errors"
 
 	"github.com/OneOfOne/xxhash"
 )
@@ -83,6 +84,9 @@ func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
 	this.positions = this.positions[0:0]
 	this.valueSizes = this.valueSizes[0:0]
+	this.writePosition = 0
+	this.writeSequence = 0
+	this.writeErr = errors.New("write never started")
 }
 
 func (this *WriteBatch) Bytes() []byte {

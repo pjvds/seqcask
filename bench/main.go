@@ -45,10 +45,6 @@ func main() {
 	}
 	//defer random.Stop()
 
-	batch := seqcask.NewWriteBatch()
-	for index := 0; index < *batchSize; index++ {
-		batch.Put(value)
-	}
 	putted := new(int64)
 
 	var work sync.WaitGroup
@@ -56,9 +52,13 @@ func main() {
 
 	var done bool
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 16; i++ {
 		work.Add(1)
 		go func() {
+			batch := seqcask.NewWriteBatch()
+			for index := 0; index < *batchSize; index++ {
+				batch.Put(value)
+			}
 			for !done {
 				if err := cask.Write(batch); err != nil {
 					panic(err)
