@@ -1,5 +1,7 @@
 # Seqcask
 
+![Codeship Status for pjvds/seqcask](https://codeship.com/projects/c6e870a0-8559-0132-5e89-5e1a40b85bb2/status?branch=master)](https://codeship.com/projects/58713)
+
 Value value store optimized for sequential immutible data based on the famous [bitcask](https://github.com/basho/bitcask/blob/develop/doc/bitcask-intro.pdf). 
 Seqcask has the following differences compared with bitcask;
 
