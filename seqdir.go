@@ -43,3 +43,23 @@ func (this *SeqDir) Get(offset uint64) (Item, bool) {
 	item, ok := this.items[offset]
 	return item, ok
 }
+
+func (this *SeqDir) GetAll(from uint64, length int) []Item {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
+	items := make([]Item, 0, length)
+	to := from + uint64(length)
+
+	for sequence := from; sequence < to; sequence++ {
+		item, ok := this.items[sequence]
+
+		if ok {
+			items = append(items, item)
+		} else {
+			break
+		}
+	}
+
+	return items
+}
