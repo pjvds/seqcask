@@ -33,7 +33,6 @@ func (this *WriteBatch) getSeqdirItems(position int64) []Item {
 	// create seqdir items for every message
 	for index := 0; index < msgCount; index++ {
 		this.itemBuffer[index] = Item{
-			FileId:    0, // TODO: set
 			ValueSize: this.valueSizes[index],
 			Position:  position + int64(this.positions[index]),
 		}
