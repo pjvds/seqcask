@@ -9,10 +9,6 @@ import (
 	"os"
 	"path"
 
-	"time"
-
-	"github.com/golang/glog"
-
 	"github.com/OneOfOne/xxhash/native"
 	//"github.com/ncw/directio"
 )
@@ -36,7 +32,7 @@ type Seqcask struct {
 
 	seqdir *SeqDir
 
-	writeQueue chan *WriteBatch
+	writer chan writer
 }
 
 func MustOpen(directory string, size int64) *Seqcask {
@@ -66,12 +62,14 @@ func Open(directory string, size int64) (*Seqcask, error) {
 	cask := &Seqcask{
 		activeFile: file,
 		seqdir:     NewSeqDir(),
-		writeQueue: make(chan *WriteBatch, 16),
+		writer:     make(chan writer, 1),
+	}
+	cask.writer <- writer{
+		file: file,
 	}
 	if err := cask.activeFile.Truncate(size); err != nil {
 		return nil, err
 	}
-	go cask.writeLoop()
 
 	return cask, nil
 }
@@ -84,68 +82,40 @@ func (this *Seqcask) Put(value []byte) (err error) {
 	return this.Write(batch)
 }
 
-type writeRequest struct {
-	bytes []byte
-
-	// represents the number of values stored in the bytes array
-	valueCount int
-
-	// the position in the file
-	// where the first write happened
-	position int64
-	sequence uint64
-	err      error
-
-	done chan struct{}
+// Borrow the writer to do a file write. It should be
+// returned by calling returnWriter as soon as possible.
+//
+// This methods blocks until the writer is available. There
+// is not garrantee in order, the writer is handed out in
+// an non deterministic order. So it might be that a goroutine
+// requested it first but another routine that requested it later
+// will actually get it.
+func (this *Seqcask) borrowWriter() writer {
+	return <-this.writer
 }
 
-func (this *Seqcask) writeLoop() {
-	var writeStarted time.Time
-	var written int
-
-	for batch := range this.writeQueue {
-		if glog.V(2) {
-			writeStarted = time.Now()
-		}
-
-		// WriteAt doesn't use a atomic operation to synchronize position and
-		// only uses a single syscall instead of two.
-		written, batch.writeErr = this.activeFile.WriteAt(batch.Bytes(), this.activeFilePosition)
-
-		if batch.writeErr != nil {
-			if glog.V(1) {
-				glog.Warningf("error writing %v bytes to active file %v at position %v: %v",
-					batch.Len(), this.activeFile.Name(), this.activeFilePosition, batch.writeErr)
-			}
-		} else {
-			// Set state as it was when starting this write
-			batch.writePosition = this.activeFilePosition
-			batch.writeSequence = this.sequence
-
-			// Advance position because we succeeded.
-			this.activeFilePosition += int64(written)
-			this.sequence += uint64(batch.Len())
-
-		}
-
-		batch.writeDone <- struct{}{}
-		if glog.V(2) {
-			elapsed := time.Since(writeStarted)
-			glog.Infof("written %v bytes in %v", written, elapsed)
-		}
-	}
+// Returns an writer after it has been borrowed. This should
+// be called as soon as possible to make sure others can use
+// the writer. This means you probably want to return it even
+// before you checked for errors or anything.
+func (this *Seqcask) returnWriter(writer writer) {
+	this.writer <- writer
 }
 
 func (this *Seqcask) Write(batch *WriteBatch) (err error) {
-	this.writeQueue <- batch
-	<-batch.writeDone
+	var sequenceStart uint64
+	var positionStart int64
+	writer := this.borrowWriter()
 
-	if err = batch.writeErr; err != nil {
+	sequenceStart, positionStart, err = writer.Write(batch.Len(), batch.Bytes())
+	this.returnWriter(writer)
+
+	if err != nil {
 		return
 	}
 
 	// add all seqdir items to the seqdir
-	this.seqdir.AddAll(batch.writeSequence, batch.getSeqdirItems()...)
+	this.seqdir.AddAll(sequenceStart, positionStart, batch.getSeqdirItems()...)
 	return
 }
 

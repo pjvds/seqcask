@@ -26,12 +26,13 @@ func (this *SeqDir) Add(seq uint64, fid uint16, valueSize uint32, position int64
 	this.items[seq] = Item{fid, valueSize, position}
 }
 
-func (this *SeqDir) AddAll(seqStart uint64, items ...Item) {
+func (this *SeqDir) AddAll(sequenceStart uint64, positionStart int64, items ...Item) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
 	for index, item := range items {
-		this.items[seqStart+uint64(index)] = item
+		item.Position += positionStart
+		this.items[sequenceStart+uint64(index)] = item
 	}
 }
 
