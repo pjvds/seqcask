@@ -30,7 +30,7 @@ func NewWriteBatch() *WriteBatch {
 	return batch
 }
 
-func (this *WriteBatch) getSeqdirItems() []Item {
+func (this *WriteBatch) getSeqdirItems(position int64) []Item {
 	msgCount := this.Len()
 	// make sure we have enought capacity in the item slice
 	// we only care about capacity, not about the content so
@@ -44,7 +44,7 @@ func (this *WriteBatch) getSeqdirItems() []Item {
 		this.itemBuffer[index] = Item{
 			FileId:    0, // TODO: set
 			ValueSize: this.valueSizes[index],
-			Position:  this.writePosition + int64(this.positions[index]),
+			Position:  position + int64(this.positions[index]),
 		}
 	}
 

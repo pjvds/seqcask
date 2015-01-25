@@ -47,7 +47,7 @@ func TestAddAllGetAll(t *testing.T) {
 		item.Position = int64(index) * int64(valueSize)
 	}
 
-	seqdir.AddAll(sequence, 0, items...)
+	seqdir.AddAll(sequence, items...)
 
 	getItems := seqdir.GetAll(sequence, len(items))
 
