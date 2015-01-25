@@ -9,18 +9,12 @@ import (
 
 type WriteBatch struct {
 	buffer     bytes.Buffer
-	positions  []int
-	valueSizes []uint32
+	positions  []int    // TODO: the itemBuffer can hold this state
+	valueSizes []uint32 // TODO: the itemBuffer can hold this state
 
 	// used to store the seqdir items while
 	// writing to append them all at once
 	itemBuffer []Item
-
-	writeErr      error
-	writePosition int64
-	writeSequence uint64
-
-	writeDone chan struct{}
 }
 
 func NewWriteBatch() *WriteBatch {
