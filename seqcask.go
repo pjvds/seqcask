@@ -50,7 +50,7 @@ func Open(directory string, size int64) (*Seqcask, error) {
 	}
 	if len(files) != 0 {
 		// TODO: support existing directories
-		return nil, fmt.Errorf("directory not empty")
+		return nil, fmt.Errorf("directory %v not empty: contains %v files", directory, len(files))
 	}
 
 	//file, err := directio.OpenFile(path.Join(directory, "1.data"), os.O_CREATE | os.O_WRONLY, 0666)
