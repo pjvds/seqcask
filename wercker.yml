@@ -1,0 +1,16 @@
+box: wercker/golang
+build:
+    steps:
+        - pjvds/setup-go-workspace
+        - script:
+            name: Go get
+            code: go get -t ./...
+        - script:
+            name: Go build
+            code: go build -v
+        - script:
+            name: Go test
+            code: go test -v
+        - script:
+            name: Go bench
+            code: go test -bench .
