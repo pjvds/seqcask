@@ -158,12 +158,17 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 	return this.readValue(item)
 }
 
+// GetAll returns all available values from a sequence to the maximum of the given length.
+// If there are no values available in that range, an empty slice is returned.
 func (this *Seqcask) GetAll(sequence uint64, length int) ([][]byte, error) {
 	items := this.seqdir.GetAll(sequence, length)
 
+	// if we have no items in that range, just return an empty slice
 	if len(items) == 0 {
 		return make([][]byte, 0, 0), nil
 	}
+
+	// we have a single item, read the value and return it in a slice
 	if len(items) == 1 {
 		if value, err := this.readValue(items[0]); err != nil {
 			return nil, err
