@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pjvds/seqcask"
@@ -24,7 +25,7 @@ func BenchmarkPut(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustOpen(directory, 0)
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	random := seqcask.NewRandomValueGenerator(200)
 
 	b.ResetTimer()
@@ -40,7 +41,7 @@ func TestPutBatchGetAll(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustOpen(directory, 5000)
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	batch := seqcask.NewWriteBatch()
 
 	putValues := make([][]byte, 50, 50)
@@ -67,7 +68,7 @@ func BenchmarkPutBatch(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustOpen(directory, 5000)
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	batch := seqcask.NewWriteBatch()
 	batch.Put(
 		[]byte("agxtzwepimobpnikebkhftxcfslqtnnsgihzdcuvgtlptjxjxrblxnonvazjeqiahfxjszxcpxoqlxudrsndeuodeqaeiotrczusvftchpxnxfmkejvqqpvrfcvpcuafplfwpimrmklftbrdjmfaxapnqpcvcsmgnisczvjnypmyffexxuzovbwzrjghjtziudfgbqbrhazcdcyzkxqjbxnoscpuvzaoawwclllfbwmkhhqxcnavfwfglmmaamf"),
@@ -85,26 +86,20 @@ func BenchmarkPutBatch(b *testing.B) {
 	cask.Sync()
 }
 
-func TestOpen(t *testing.T) {
+func TestCreate(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory, 0)
-	if err != nil {
-		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
-	}
-	defer b.Close()
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 0)
+	defer cask.Close()
 }
 
 func TestPut(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory, 0)
-	if err != nil {
-		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
-	}
-	defer b.Close()
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	defer cask.Close()
 
 	putValues := [][]byte{
 		[]byte("pieter joost van de sande"),
@@ -112,7 +107,7 @@ func TestPut(t *testing.T) {
 	}
 
 	for _, value := range putValues {
-		if err := b.Put(value); err != nil {
+		if err := cask.Put(value); err != nil {
 			t.Fatalf("failed to put: %v", err.Error())
 		}
 	}
@@ -122,22 +117,19 @@ func TestPutGetRoundtrup(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	b, err := seqcask.Open(directory, 0)
-	if err != nil {
-		t.Fatalf("failed to open bitcast at directory %v: %v", directory, err.Error())
-	}
-	defer b.Close()
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	defer cask.Close()
 
 	putValue := []byte("hello world")
 
-	if err := b.Put(putValue); err != nil {
+	if err := cask.Put(putValue); err != nil {
 		t.Fatalf("failed to put: %v", err.Error())
 	} else {
-		if err := b.Sync(); err != nil {
+		if err := cask.Sync(); err != nil {
 			t.Fatalf("failed to sync: %v")
 		}
 
-		if getValue, err := b.Get(0); err != nil {
+		if getValue, err := cask.Get(0); err != nil {
 			t.Fatalf("failed to get: %v", err.Error())
 		} else {
 			if !bytes.Equal(putValue, getValue) {

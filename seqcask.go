@@ -3,11 +3,8 @@ package seqcask
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
-	"path"
 
 	"github.com/OneOfOne/xxhash/native"
 	//"github.com/ncw/directio"
@@ -33,26 +30,17 @@ type Seqcask struct {
 	writer chan writer
 }
 
-func MustOpen(directory string, size int64) *Seqcask {
-	if seqcask, err := Open(directory, size); err != nil {
+func MustCreate(filename string, size int64) *Seqcask {
+	if seqcask, err := Create(filename, size); err != nil {
 		panic(err)
 	} else {
 		return seqcask
 	}
 }
 
-func Open(directory string, size int64) (*Seqcask, error) {
-	files, err := ioutil.ReadDir(directory)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) != 0 {
-		// TODO: support existing directories
-		return nil, fmt.Errorf("directory %v not empty: contains %v files", directory, len(files))
-	}
-
+func Create(filename string, size int64) (*Seqcask, error) {
 	//file, err := directio.OpenFile(path.Join(directory, "1.data"), os.O_CREATE | os.O_WRONLY, 0666)
-	file, err := os.Create(path.Join(directory, "1.data"))
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -221,4 +209,14 @@ func (this *Seqcask) Close() error {
 		return err
 	}
 	return this.activeFile.Close()
+}
+
+func (this *Seqcask) Destroy() error {
+	filename := this.activeFile.Name()
+
+	if err := this.Close(); err != nil {
+		return err
+	}
+
+	return os.Remove(filename)
 }
