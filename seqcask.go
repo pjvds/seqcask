@@ -30,6 +30,11 @@ type Seqcask struct {
 	writer chan writer
 }
 
+type KeyValuePair struct {
+	Key   uint64
+	Value []byte
+}
+
 func MustCreate(filename string, size int64) *Seqcask {
 	if seqcask, err := Create(filename, size); err != nil {
 		panic(err)
@@ -135,13 +140,21 @@ func (this *Seqcask) readValue(item Item) ([]byte, error) {
 	return valueData, nil
 }
 
-func (this *Seqcask) Get(seq uint64) ([]byte, error) {
+func (this *Seqcask) Get(seq uint64) (KeyValuePair, error) {
+	// TODO: support GET FROM
 	item, ok := this.seqdir.Get(seq)
 	if !ok {
-		return nil, ErrNotFound
+		return KeyValuePair{}, ErrNotFound
 	}
 
-	return this.readValue(item)
+	if value, err := this.readValue(item); err != nil {
+		return KeyValuePair{}, err
+	} else {
+		return KeyValuePair{
+			Key:   seq,
+			Value: value,
+		}, nil
+	}
 }
 
 func (this *Seqcask) GetLastKey() (uint64, bool) {
@@ -150,12 +163,15 @@ func (this *Seqcask) GetLastKey() (uint64, bool) {
 
 // GetAll returns all available values from a sequence to the maximum of the given length.
 // If there are no values available in that range, an empty slice is returned.
-func (this *Seqcask) GetAll(sequence uint64, length int) ([][]byte, error) {
+func (this *Seqcask) GetAll(sequence uint64, length int) ([]KeyValuePair, error) {
 	items := this.seqdir.GetAll(sequence, length)
+	itemCount := len(items)
+
+	values := make([]KeyValuePair, itemCount, itemCount)
 
 	// if we have no items in that range, just return an empty slice
-	if len(items) == 0 {
-		return make([][]byte, 0, 0), nil
+	if itemCount == 0 {
+		return values, nil
 	}
 
 	// we have a single item, read the value and return it in a slice
@@ -163,7 +179,11 @@ func (this *Seqcask) GetAll(sequence uint64, length int) ([][]byte, error) {
 		if value, err := this.readValue(items[0]); err != nil {
 			return nil, err
 		} else {
-			return [][]byte{value}, nil
+			values[0] = KeyValuePair{
+				Key:   sequence, // TODO: get key from item
+				Value: value,
+			}
+			return values, nil
 		}
 	}
 
@@ -180,10 +200,12 @@ func (this *Seqcask) GetAll(sequence uint64, length int) ([][]byte, error) {
 	}
 
 	position := (32 / 8)
-	values := make([][]byte, len(items), len(items))
 
 	for index, item := range items {
-		values[index] = buffer[position : position+int(item.ValueSize)]
+		values[index] = KeyValuePair{
+			Key:   sequence + uint64(index), // TODO: get key from item
+			Value: buffer[position : position+int(item.ValueSize)],
+		}
 		position += int(item.ValueSize) + overhead
 	}
 

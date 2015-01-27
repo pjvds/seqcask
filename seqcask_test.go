@@ -60,7 +60,7 @@ func TestPutBatchGetAll(t *testing.T) {
 	assert.Equal(t, len(values), len(putValues))
 
 	for index, value := range values {
-		assert.Equal(t, value, putValues[index])
+		assert.Equal(t, value.Value, putValues[index])
 	}
 }
 
@@ -132,8 +132,8 @@ func TestPutGetRoundtrup(t *testing.T) {
 		if getValue, err := cask.Get(0); err != nil {
 			t.Fatalf("failed to get: %v", err.Error())
 		} else {
-			if !bytes.Equal(putValue, getValue) {
-				t.Fatalf("put and get value differ: %v vs %v, %v vs %v", string(putValue), string(getValue), putValue, getValue)
+			if !bytes.Equal(putValue, getValue.Value) {
+				t.Fatalf("put and get value differ: %v vs %v, %v vs %v", string(putValue), string(getValue.Value), putValue, getValue.Value)
 			}
 		}
 	}
