@@ -7,13 +7,12 @@ import (
 )
 
 type WriteBatch struct {
-	buffer     bytes.Buffer
-	positions  []int    // TODO: the itemBuffer can hold this state
-	valueSizes []uint32 // TODO: the itemBuffer can hold this state
+	buffer bytes.Buffer
 
 	// used to store the seqdir items while
 	// writing to append them all at once
 	itemBuffer []Item
+	itemCount  int
 }
 
 func NewWriteBatch() *WriteBatch {
@@ -21,28 +20,32 @@ func NewWriteBatch() *WriteBatch {
 	return batch
 }
 
+// Get the seqdir items.
+// This method may only called *ONCE* after a write was successfull
+// because it updates the item positions.
 func (this *WriteBatch) getSeqdirItems(position int64) []Item {
-	msgCount := this.Len()
-	// make sure we have enought capacity in the item slice
-	// we only care about capacity, not about the content so
-	// recreating it is not a problem at all
-	if len(this.itemBuffer) < msgCount {
-		this.itemBuffer = make([]Item, msgCount, msgCount)
+
+	// the positions we currently have are set to the position
+	// in the buffer, which means the first item is 0, 2nd item
+	// is 0 + first item size, etc.
+	for index := 0; index < this.Len(); index++ {
+		this.itemBuffer[index].Position += position
 	}
 
-	// create seqdir items for every message
-	for index := 0; index < msgCount; index++ {
-		this.itemBuffer[index] = Item{
-			ValueSize: this.valueSizes[index],
-			Position:  position + int64(this.positions[index]),
-		}
-	}
-
-	return this.itemBuffer[0:msgCount]
+	return this.itemBuffer[0:this.itemCount]
 }
 
 // Puts a single value to this WriteBatch.
 func (this *WriteBatch) Put(values ...[]byte) {
+	// Grow the item buffer if needed.
+	if len(this.itemBuffer) < this.itemCount+len(values) {
+		size := len(this.itemBuffer) + (len(values) * 2)
+		largerItemBuffer := make([]Item, size, size)
+		copy(largerItemBuffer, this.itemBuffer)
+
+		this.itemBuffer = largerItemBuffer
+	}
+
 	for _, value := range values {
 		// store the current item position
 		startPosition := this.buffer.Len()
@@ -62,18 +65,20 @@ func (this *WriteBatch) Put(values ...[]byte) {
 			byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
 
 		// store the relative start position of this value
-		// this us used to calculate the file position
-		// when adding the seqdir items after a successfull write
-		this.positions = append(this.positions, startPosition)
-		this.valueSizes = append(this.valueSizes, valueSize)
+		// the correct position is set when getSeqdirItems is called
+		this.itemBuffer[this.itemCount] = Item{
+			ValueSize: valueSize,
+			Position:  int64(startPosition),
+		}
+
+		this.itemCount++
 	}
 }
 
 // Reset truncates the buffer and positions
 func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
-	this.positions = this.positions[0:0]
-	this.valueSizes = this.valueSizes[0:0]
+	this.itemCount = 0
 }
 
 func (this *WriteBatch) Bytes() []byte {
@@ -81,5 +86,5 @@ func (this *WriteBatch) Bytes() []byte {
 }
 
 func (this *WriteBatch) Len() int {
-	return len(this.positions)
+	return this.itemCount
 }
