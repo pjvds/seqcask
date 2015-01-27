@@ -28,8 +28,6 @@ type Seqcask struct {
 	activeFilePosition int64
 	batch              WriteBatch
 
-	sequence uint64
-
 	seqdir *SeqDir
 
 	writer chan writer
@@ -156,6 +154,10 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 	}
 
 	return this.readValue(item)
+}
+
+func (this *Seqcask) GetLastKey() (uint64, bool) {
+	return this.seqdir.GetLastKey()
 }
 
 // GetAll returns all available values from a sequence to the maximum of the given length.
