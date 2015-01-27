@@ -102,6 +102,13 @@ func (this *Seqcask) returnWriter(writer writer) {
 	this.writer <- writer
 }
 
+// Writes the content of the given write batch to the database.
+// The write batch itself is left untouched and needs to be
+// resetted after this method succeeded if it needs to be used
+// again.
+// The reason we do not reset the write batch from this method
+// is to allow writing the same batch to multiple databases if
+// needed.
 func (this *Seqcask) Write(batch *WriteBatch) (err error) {
 	var sequenceStart uint64
 	var positionStart int64
@@ -119,17 +126,13 @@ func (this *Seqcask) Write(batch *WriteBatch) (err error) {
 	return
 }
 
-func (this *Seqcask) Get(seq uint64) ([]byte, error) {
-	entry, ok := this.seqdir.Get(seq)
-	if !ok {
-		return nil, ErrNotFound
-	}
-
-	valueSize := int(entry.ValueSize)
-	entryLength := 4 + valueSize + 8
-	buffer := make([]byte, entryLength, entryLength)
-	if read, err := this.activeFile.ReadAt(buffer, entry.Position); err != nil {
-		log.Printf("error reading value from offset %v at file position %v to position %v, read %v bytes: %v", seq, entry.Position, entry.Position+int64(entryLength), read, err.Error())
+func (this *Seqcask) readValue(item Item) ([]byte, error) {
+	valueSize := int(item.ValueSize)
+	itemLength := 4 + valueSize + 8
+	buffer := make([]byte, itemLength, itemLength)
+	if read, err := this.activeFile.ReadAt(buffer, item.Position); err != nil {
+		// TODO: set sequence/offset... prob we should just get it from item
+		log.Printf("error reading value from offset %v at file position %v to position %v, read %v bytes: %v", 0, item.Position, item.Position+int64(itemLength), read, err.Error())
 		return nil, err
 	} else if read != len(buffer) {
 		return nil, errors.New("read to short")
@@ -144,6 +147,52 @@ func (this *Seqcask) Get(seq uint64) ([]byte, error) {
 	}
 
 	return valueData, nil
+}
+
+func (this *Seqcask) Get(seq uint64) ([]byte, error) {
+	item, ok := this.seqdir.Get(seq)
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	return this.readValue(item)
+}
+
+func (this *Seqcask) GetAll(sequence uint64, length int) ([][]byte, error) {
+	items := this.seqdir.GetAll(sequence, length)
+
+	if len(items) == 0 {
+		return make([][]byte, 0, 0), nil
+	}
+	if len(items) == 1 {
+		if value, err := this.readValue(items[0]); err != nil {
+			return nil, err
+		} else {
+			return [][]byte{value}, nil
+		}
+	}
+
+	// TODO: handle corrupt items by advancing to next one
+	totalSize := 0
+	overhead := (32 / 8) + (64 / 8)
+	for _, item := range items {
+		totalSize += int(item.ValueSize) + overhead
+	}
+
+	buffer := make([]byte, totalSize, totalSize)
+	if _, err := this.activeFile.ReadAt(buffer, items[0].Position); err != nil {
+		return nil, err
+	}
+
+	position := (32 / 8)
+	values := make([][]byte, len(items), len(items))
+
+	for index, item := range items {
+		values[index] = buffer[position : position+int(item.ValueSize)]
+		position += int(item.ValueSize) + overhead
+	}
+
+	return values, nil
 }
 
 func (this *Seqcask) Sync() error {

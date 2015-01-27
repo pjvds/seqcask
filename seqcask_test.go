@@ -3,11 +3,22 @@ package seqcask_test
 import (
 	"bytes"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"testing"
 
 	"github.com/pjvds/seqcask"
+	"github.com/stretchr/testify/assert"
 )
+
+func RandomValue(length int) []byte {
+	value := make([]byte, length, length)
+	for i := 0; i < length; i++ {
+		value[i] = byte(rand.Intn(255))
+	}
+
+	return value
+}
 
 func BenchmarkPut(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
@@ -23,6 +34,33 @@ func BenchmarkPut(b *testing.B) {
 		}
 	}
 	cask.Sync()
+}
+
+func TestPutBatchGetAll(t *testing.T) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustOpen(directory, 5000)
+	batch := seqcask.NewWriteBatch()
+
+	putValues := make([][]byte, 50, 50)
+	for index := range putValues {
+		value := RandomValue(200)
+
+		putValues[index] = value
+		batch.Put(value)
+	}
+
+	err := cask.Write(batch)
+	assert.Nil(t, err)
+
+	values, err := cask.GetAll(uint64(0), len(putValues))
+
+	assert.Equal(t, len(values), len(putValues))
+
+	for index, value := range values {
+		assert.Equal(t, value, putValues[index])
+	}
 }
 
 func BenchmarkPutBatch(b *testing.B) {
