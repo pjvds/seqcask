@@ -64,6 +64,80 @@ func TestPutBatchGetAll(t *testing.T) {
 	}
 }
 
+func BenchmarkWrite1mbOf200BytesMessagesAsync(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	defer cask.Close()
+
+	batches := make([]*seqcask.WriteBatch, 50, 50)
+	for batchIndex := range batches {
+		// 5000 * 200 bytes values = 1 megabyte
+		values := make([][]byte, 5000, 5000)
+
+		for index := range values {
+			values[index] = RandomValue(200)
+		}
+
+		batch := seqcask.NewWriteBatch()
+		batch.Put(values...)
+
+		batches[batchIndex] = batch
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.SetBytes(5000 * 200)
+		batch := batches[i%50]
+
+		if err := cask.Write(batch); err != nil {
+			b.Fatalf("failed to write batch: %v", err.Error())
+		}
+	}
+	b.StopTimer()
+}
+
+func BenchmarkWrite1mbOf200BytesMessagesSync(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	defer cask.Close()
+
+	batches := make([]*seqcask.WriteBatch, 50, 50)
+	for batchIndex := range batches {
+		// 5000 * 200 bytes values = 1 megabyte
+		values := make([][]byte, 5000, 5000)
+
+		for index := range values {
+			values[index] = RandomValue(200)
+		}
+
+		batch := seqcask.NewWriteBatch()
+		batch.Put(values...)
+
+		batches[batchIndex] = batch
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.SetBytes(5000 * 200)
+		//	batch.Put(valuesOfValues[i%500]...)
+		batch := batches[i%50]
+
+		if err := cask.Write(batch); err != nil {
+			b.Fatalf("failed to write batch: %v", err.Error())
+		}
+		if err := cask.Sync(); err != nil {
+			b.Fatalf("failed to sync seqcask db: %v", err.Error())
+		}
+
+		//	batch.Reset()
+	}
+	b.StopTimer()
+}
+
 func BenchmarkPutBatch(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
