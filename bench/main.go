@@ -34,7 +34,7 @@ func main() {
 		directory = *dir
 	}
 
-	cask := seqcask.MustOpen(directory, 30000000000)
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 30000000000)
 	defer cask.Close()
 	defer os.RemoveAll(directory)
 
