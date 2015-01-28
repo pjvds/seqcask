@@ -123,7 +123,6 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.SetBytes(5000 * 200)
-		//	batch.Put(valuesOfValues[i%500]...)
 		batch := batches[i%50]
 
 		if err := cask.Write(batch); err != nil {
@@ -132,8 +131,6 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 		if err := cask.Sync(); err != nil {
 			b.Fatalf("failed to sync seqcask db: %v", err.Error())
 		}
-
-		//	batch.Reset()
 	}
 	b.StopTimer()
 }

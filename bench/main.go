@@ -27,8 +27,6 @@ func main() {
 	flag.Parse()
 	glog.Info("starting...")
 
-	//defer profile.Start(profile.CPUProfile).Stop()
-
 	directory, _ := ioutil.TempDir("", "seqcask_bench_")
 	if len(*dir) > 0 {
 		directory = *dir
@@ -38,12 +36,10 @@ func main() {
 	defer cask.Close()
 	defer os.RemoveAll(directory)
 
-	//random := seqcask.NewRandomValueGenerator(*msgSize)
 	value := make([]byte, *msgSize, *msgSize)
 	for index := range value {
 		value[index] = byte(rand.Intn(255))
 	}
-	//defer random.Stop()
 
 	putted := new(int64)
 
