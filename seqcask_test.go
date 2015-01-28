@@ -64,7 +64,7 @@ func TestPutBatchGetAll(t *testing.T) {
 	}
 }
 
-func BenchmarkWrite1mbOf200BytesMessagesAsync(b *testing.B) {
+func BenchmarkWrite1mb200bValuesAsync(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
@@ -98,7 +98,7 @@ func BenchmarkWrite1mbOf200BytesMessagesAsync(b *testing.B) {
 	b.StopTimer()
 }
 
-func BenchmarkWrite1mbOf200BytesMessagesSync(b *testing.B) {
+func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
