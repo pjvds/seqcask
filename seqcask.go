@@ -65,14 +65,6 @@ func Create(filename string, size int64) (*Seqcask, error) {
 	return cask, nil
 }
 
-func (this *Seqcask) Put(value []byte) (err error) {
-	batch := NewWriteBatch()
-	batch.Put(value)
-
-	// TODO: optimize for this use case as well
-	return this.Write(batch)
-}
-
 // Borrow the writer to do a file write. It should be
 // returned by calling returnWriter as soon as possible.
 //

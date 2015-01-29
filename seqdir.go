@@ -21,8 +21,8 @@ type Item struct {
 	// by hashing the primary id of the message payload, for example the user id.
 	PartitionKey uint16
 
-	// The type of the message that is stored.
-	MessageType uint16
+	// The type id of the message that is stored.
+	TypeId uint16
 
 	// The size of the value in bytes.
 	ValueSize uint32

@@ -21,22 +21,6 @@ func RandomValue(length int) []byte {
 	return value
 }
 
-func BenchmarkPut(b *testing.B) {
-	directory, _ := ioutil.TempDir("", "bitcast_test_")
-	defer os.RemoveAll(directory)
-
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
-	random := seqcask.NewRandomValueGenerator(200)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if err := cask.Put(<-random.Values); err != nil {
-			b.Fatalf("failed to put: %v", err.Error())
-		}
-	}
-	cask.Sync()
-}
-
 func TestPutBatchGetAll(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
@@ -44,23 +28,24 @@ func TestPutBatchGetAll(t *testing.T) {
 	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	batch := seqcask.NewWriteBatch()
 
-	putValues := make([][]byte, 50, 50)
-	for index := range putValues {
+	putMessages := make([]seqcask.Message, 50, 50)
+	for index := range putMessages {
 		value := RandomValue(200)
 
-		putValues[index] = value
-		batch.Put(value)
+		putMessages[index] = seqcask.NewMessage(0, 0, value)
 	}
+
+	batch.Put(putMessages...)
 
 	err := cask.Write(batch)
 	assert.Nil(t, err)
 
-	values, err := cask.GetAll(uint64(0), len(putValues))
+	values, err := cask.GetAll(uint64(0), len(putMessages))
 
-	assert.Equal(t, len(values), len(putValues))
+	assert.Equal(t, len(values), len(putMessages))
 
 	for index, value := range values {
-		assert.Equal(t, value.Value, putValues[index])
+		assert.Equal(t, value.Value, putMessages[index].Value)
 	}
 }
 
@@ -74,14 +59,14 @@ func BenchmarkWrite1mb200bValuesAsync(b *testing.B) {
 	batches := make([]*seqcask.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
-		values := make([][]byte, 5000, 5000)
+		messages := make([]seqcask.Message, 5000, 5000)
 
-		for index := range values {
-			values[index] = RandomValue(200)
+		for index := range messages {
+			messages[index] = seqcask.NewMessage(0, 0, RandomValue(200))
 		}
 
 		batch := seqcask.NewWriteBatch()
-		batch.Put(values...)
+		batch.Put(messages...)
 
 		batches[batchIndex] = batch
 	}
@@ -108,14 +93,14 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	batches := make([]*seqcask.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
-		values := make([][]byte, 5000, 5000)
+		messages := make([]seqcask.Message, 5000, 5000)
 
-		for index := range values {
-			values[index] = RandomValue(200)
+		for index := range messages {
+			messages[index] = seqcask.NewMessage(0, 0, RandomValue(200))
 		}
 
 		batch := seqcask.NewWriteBatch()
-		batch.Put(values...)
+		batch.Put(messages...)
 
 		batches[batchIndex] = batch
 	}
@@ -146,7 +131,7 @@ func BenchmarkGetRange1mb200bValues(b *testing.B) {
 
 	for i := 0; i < 5000; i++ {
 		value := RandomValue(200)
-		batch.Put(value)
+		batch.Put(seqcask.NewMessage(0, 0, value))
 	}
 
 	cask.Write(batch)
@@ -162,28 +147,6 @@ func BenchmarkGetRange1mb200bValues(b *testing.B) {
 	b.StopTimer()
 }
 
-func BenchmarkPutBatch(b *testing.B) {
-	directory, _ := ioutil.TempDir("", "bitcast_test_")
-	defer os.RemoveAll(directory)
-
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
-	batch := seqcask.NewWriteBatch()
-	batch.Put(
-		[]byte("agxtzwepimobpnikebkhftxcfslqtnnsgihzdcuvgtlptjxjxrblxnonvazjeqiahfxjszxcpxoqlxudrsndeuodeqaeiotrczusvftchpxnxfmkejvqqpvrfcvpcuafplfwpimrmklftbrdjmfaxapnqpcvcsmgnisczvjnypmyffexxuzovbwzrjghjtziudfgbqbrhazcdcyzkxqjbxnoscpuvzaoawwclllfbwmkhhqxcnavfwfglmmaamf"),
-		[]byte("smlqfbwpqsethbgweampbwfvcuktntarrowoicnooqoedmlcjyhyirfcwzejgafzgeqhjgocgredqotjivpludcfbusccknredakjjfzimlamxhddxiiqqwctzrmsfoymwkjuwagmghesefpyjrxsagwbpyuvwcnjhusfwuvalxmstctvhljuocrefeehccwdhjmwlyluycjsuzkwcaywerjdzywatuxnpuluaixskgmtxqmkrwwwffhiysnzzy"),
-		[]byte("mtuaizgmqjqsvasmapkdxnygadhwrzusaiffteljlrmffwtzooljihllqpgeeokbawevvidxdtwnynjtrlxbztlaotfvvulqwdashfaviitwzzccqdvausmqzkmovtuisjnjdwqbsyfdilkgpriddxgsqmveenqihxiwkzpuasxbfhfajazirfwhntrwsqmpxbxoosqlvspomqbifcofbnhmdjpxfhuvorbhfrzlvyzpmacigypavxtnjbtbdgh"),
-		[]byte("xuonnyzlxxpzsbrmlvtfwdswmsotusqtprdomlfpxfwwwvozusdgzbsflqwtqibczwiksefczjjzcorufmxujxjqvematcfeofmgqigklnkqmsjihansqixxcjabsnutrusscmofkujfmufbgbqxlbgzuwnpwfvzikigyhfhnbswdsiukjlsztjtqkyoertlvylptacsqapmjermfsfpkqsvvabtfleygskogwvflwpjfzgvvuyoupiqlvvphhs"),
-		[]byte("bmgmbcwrmsmgwnkeyhahnitexivcvxblaptgcaqcozpjyetpmgnmndzvlysmxfijogjytcczwohqijcojdhotfnavijupuaruyywztaqqcmmnbxrfwszcfzyrzieoudhjsxfrulzbvpcbmpzuifciejnyyqbfwviyzlyhmvkcgpqcjdacrfszhtmzejdyqfjuiojovoiyuwbfsaxbteifqmciznabveigqlkwczwshdhzenjlmhgdclhkgtmmaj"))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if err := cask.Write(batch); err != nil {
-			b.Fatalf("failed to write batch: %v", err.Error())
-		}
-	}
-	cask.Sync()
-}
-
 func TestCreate(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
@@ -192,36 +155,42 @@ func TestCreate(t *testing.T) {
 	defer cask.Close()
 }
 
-func TestPut(t *testing.T) {
+/*func TestWrite(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
 	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
-	putValues := [][]byte{
-		[]byte("pieter joost van de sande"),
-		[]byte("tomas roos"),
+	messages := []seqcask.Message{
+		seqcask.NewMessage(0, 0, []byte("pieter joost van de sande")),
+		seqcask.NewMessage(0, 0, []byte("tomas roos")),
 	}
 
-	for _, value := range putValues {
-		if err := cask.Put(value); err != nil {
-			t.Fatalf("failed to put: %v", err.Error())
-		}
-	}
-}
+	batch := seqcask.NewWriteBatch()
+	batch.Put(messages)
 
-func TestPutGetRoundtrup(t *testing.T) {
+	if err := cask.Write(batch); err != nil {
+		t.Fatalf("failed to write: %v", err.Error())
+	}
+}*/
+
+func TestPutGetRoundtrip(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
 	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
-	putValue := []byte("hello world")
+	messages := []seqcask.Message{
+		seqcask.NewMessage(0, 0, []byte("pieter joost van de sande")),
+	}
 
-	if err := cask.Put(putValue); err != nil {
-		t.Fatalf("failed to put: %v", err.Error())
+	batch := seqcask.NewWriteBatch()
+	batch.Put(messages...)
+
+	if err := cask.Write(batch); err != nil {
+		t.Fatalf("failed to write: %v", err.Error())
 	} else {
 		if err := cask.Sync(); err != nil {
 			t.Fatalf("failed to sync: %v")
@@ -230,6 +199,8 @@ func TestPutGetRoundtrup(t *testing.T) {
 		if getValue, err := cask.Get(0); err != nil {
 			t.Fatalf("failed to get: %v", err.Error())
 		} else {
+			putValue := messages[0].Value
+
 			if !bytes.Equal(putValue, getValue.Value) {
 				t.Fatalf("put and get value differ: %v vs %v, %v vs %v", string(putValue), string(getValue.Value), putValue, getValue.Value)
 			}
