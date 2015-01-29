@@ -135,6 +135,33 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	b.StopTimer()
 }
 
+func BenchmarkGetRange1mb200bValues(b *testing.B) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	defer cask.Close()
+
+	batch := seqcask.NewWriteBatch()
+
+	for i := 0; i < 5000; i++ {
+		value := RandomValue(200)
+		batch.Put(value)
+	}
+
+	cask.Write(batch)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.SetBytes(5000 * 200)
+
+		if _, err := cask.GetAll(0, 5000); err != nil {
+			b.Fatalf("failed to read range: %v", err.Error())
+		}
+	}
+	b.StopTimer()
+}
+
 func BenchmarkPutBatch(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)

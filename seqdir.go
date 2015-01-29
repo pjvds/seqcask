@@ -12,8 +12,23 @@ type SeqDir struct {
 }
 
 type Item struct {
+	// The sequence number of the item.
+	Sequence uint64
+
+	// The partition key of the message, ranging 0-65535.
+	// Every message that is stored is stored with a partition key. This value is
+	// set by the one that puts the message in the store. This is usually done
+	// by hashing the primary id of the message payload, for example the user id.
+	PartitionKey uint16
+
+	// The type of the message that is stored.
+	MessageType uint16
+
+	// The size of the value in bytes.
 	ValueSize uint32
-	Position  int64
+
+	// Points to the position in the data file that holds the item.
+	Position int64
 }
 
 func NewSeqDir() *SeqDir {
@@ -23,25 +38,35 @@ func NewSeqDir() *SeqDir {
 	}
 }
 
-func (this *SeqDir) Add(seq uint64, valueSize uint32, position int64) {
+func (this *SeqDir) Add(sequence uint64, partitionKey uint16, messageType uint16, valueSize uint32, position int64) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	this.items[seq] = Item{valueSize, position}
+	this.items[sequence] = Item{sequence, partitionKey, messageType, valueSize, position}
 
-	this.lastKey = seq
+	if this.lastKey < sequence {
+		this.lastKey = sequence
+	}
+
 	this.empty = false
 }
 
-func (this *SeqDir) AddAll(sequenceStart uint64, items ...Item) {
+func (this *SeqDir) AddAll(items ...Item) {
+	if len(items) == 0 {
+		return
+	}
+
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	for index, item := range items {
-		this.items[sequenceStart+uint64(index)] = item
+	for _, item := range items {
+		this.items[item.Sequence] = item
+
+		if this.lastKey < item.Sequence {
+			this.lastKey = item.Sequence
+		}
 	}
 
-	this.lastKey = sequenceStart + uint64(len(items))
 	this.empty = false
 }
 
@@ -61,6 +86,8 @@ func (this *SeqDir) GetAll(from uint64, length int) []Item {
 	to := from + uint64(length)
 
 	for sequence := from; sequence < to; sequence++ {
+		// TODO: we don't need to check ok for all, just inspect this.lastKey and break
+		// if we exceeded it.
 		item, ok := this.items[sequence]
 
 		if ok {

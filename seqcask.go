@@ -113,7 +113,7 @@ func (this *Seqcask) Write(batch *WriteBatch) (err error) {
 	}
 
 	// add all seqdir items to the seqdir
-	this.seqdir.AddAll(sequenceStart, batch.getSeqdirItems(positionStart)...)
+	this.seqdir.AddAll(batch.getSeqdirItems(sequenceStart, positionStart)...)
 	return
 }
 

@@ -11,7 +11,7 @@ func BenchmarkSeqDirAdds(b *testing.B) {
 
 	b.StartTimer()
 	for iteration := 0; iteration < b.N; iteration++ {
-		seqdir.Add(uint64(iteration), 0, 0)
+		seqdir.Add(uint64(iteration), 0, 0, 0, 0)
 	}
 	b.StopTimer()
 }
@@ -19,14 +19,19 @@ func BenchmarkSeqDirAdds(b *testing.B) {
 func TestAddGet(t *testing.T) {
 	seqdir := NewSeqDir()
 	sequence := uint64(0)
+	partitionKey := uint16(4)
+	messageType := uint16(8)
 	valueSize := uint32(12)
 	position := int64(88)
 
-	seqdir.Add(sequence, valueSize, position)
+	seqdir.Add(sequence, partitionKey, messageType, valueSize, position)
 
 	item, ok := seqdir.Get(sequence)
 
 	assert.True(t, ok)
+	assert.Equal(t, sequence, item.Sequence)
+	assert.Equal(t, partitionKey, item.PartitionKey)
+	assert.Equal(t, messageType, item.MessageType)
 	assert.Equal(t, valueSize, item.ValueSize)
 	assert.Equal(t, position, item.Position)
 }
@@ -35,15 +40,20 @@ func TestAddAllGetAll(t *testing.T) {
 	seqdir := NewSeqDir()
 
 	sequence := uint64(0)
+	partitionKey := uint16(4)
+	messageType := uint16(8)
 	valueSize := uint32(12)
 
 	items := make([]Item, 255, 255)
-	for index, item := range items {
-		item.ValueSize = valueSize
-		item.Position = int64(index) * int64(valueSize)
+	for index := range items {
+		items[index].Sequence = uint64(index)
+		items[index].PartitionKey = partitionKey
+		items[index].MessageType = messageType
+		items[index].ValueSize = valueSize
+		items[index].Position = int64(index) * int64(valueSize)
 	}
 
-	seqdir.AddAll(sequence, items...)
+	seqdir.AddAll(items...)
 
 	getItems := seqdir.GetAll(sequence, len(items))
 

@@ -23,12 +23,13 @@ func NewWriteBatch() *WriteBatch {
 // Get the seqdir items.
 // This method may only called *ONCE* after a write was successfull
 // because it updates the item positions.
-func (this *WriteBatch) getSeqdirItems(position int64) []Item {
+func (this *WriteBatch) getSeqdirItems(sequence uint64, position int64) []Item {
 
 	// the positions we currently have are set to the position
 	// in the buffer, which means the first item is 0, 2nd item
 	// is 0 + first item size, etc.
 	for index := 0; index < this.Len(); index++ {
+		this.itemBuffer[index].Sequence = sequence + uint64(index)
 		this.itemBuffer[index].Position += position
 	}
 
