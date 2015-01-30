@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/OneOfOne/xxhash/native"
+	"github.com/golang/glog"
 	//"github.com/ncw/directio"
 )
 
@@ -27,7 +28,7 @@ type Seqcask struct {
 
 	seqdir *SeqDir
 
-	writer chan writer
+	writer chan *writer
 }
 
 type KeyValuePair struct {
@@ -53,9 +54,9 @@ func Create(filename string, size int64) (*Seqcask, error) {
 	cask := &Seqcask{
 		activeFile: file,
 		seqdir:     NewSeqDir(),
-		writer:     make(chan writer, 1),
+		writer:     make(chan *writer, 1),
 	}
-	cask.writer <- writer{
+	cask.writer <- &writer{
 		file: file,
 	}
 	if err := cask.activeFile.Truncate(size); err != nil {
@@ -73,15 +74,25 @@ func Create(filename string, size int64) (*Seqcask, error) {
 // an non deterministic order. So it might be that a goroutine
 // requested it first but another routine that requested it later
 // will actually get it.
-func (this *Seqcask) borrowWriter() writer {
-	return <-this.writer
+func (this *Seqcask) borrowWriter() *writer {
+	writer := <-this.writer
+
+	if glog.V(2) {
+		glog.Info("borrowing writer at %v", writer.sequence)
+	}
+
+	return writer
 }
 
 // Returns an writer after it has been borrowed. This should
 // be called as soon as possible to make sure others can use
 // the writer. This means you probably want to return it even
 // before you checked for errors or anything.
-func (this *Seqcask) returnWriter(writer writer) {
+func (this *Seqcask) returnWriter(writer *writer) {
+	if glog.V(2) {
+		glog.Info("returned writer at %v", writer.sequence)
+	}
+
 	this.writer <- writer
 }
 

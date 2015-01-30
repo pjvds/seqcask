@@ -134,14 +134,23 @@ func BenchmarkGetRange1mb200bValues(b *testing.B) {
 		batch.Put(seqcask.NewMessage(0, 0, value))
 	}
 
-	cask.Write(batch)
+	for i := 0; i < b.N; i++ {
+		if err := cask.Write(batch); err != nil {
+			b.Fatalf("failed to write: %v", err.Error())
+		}
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.SetBytes(5000 * 200)
 
-		if _, err := cask.GetAll(0, 5000); err != nil {
+		from := uint64(i * 5000)
+
+		if items, err := cask.GetAll(from, 5000); err != nil {
 			b.Fatalf("failed to read range: %v", err.Error())
+		} else if len(items) != 5000 {
+			lastKey, _ := cask.GetLastKey()
+			b.Fatalf("too short read from sequence %v at iteration %v: %v, last key in db %v", from, i, len(items), lastKey)
 		}
 	}
 	b.StopTimer()

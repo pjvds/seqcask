@@ -80,6 +80,9 @@ func (this *WriteBatch) Put(messages ...Message) {
 		// write checksum
 		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),
 			byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
+
+		// increase item count
+		this.itemCount++
 	}
 }
 
@@ -88,6 +91,7 @@ func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
 	this.messages = this.messages[0:0]
 	this.messagePositions = this.messagePositions[0:0]
+	this.itemCount = 0
 }
 
 func (this *WriteBatch) Bytes() []byte {

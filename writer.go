@@ -1,6 +1,7 @@
 package seqcask
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/golang/glog"
@@ -14,6 +15,10 @@ type writer struct {
 }
 
 func (this *writer) Write(msgCount int, data []byte) (sequence uint64, position int64, err error) {
+	if msgCount == 0 {
+		return 0, 0, fmt.Errorf("can't write 0 messages")
+	}
+
 	var written int
 	written, err = this.file.WriteAt(data, this.filePosition)
 
