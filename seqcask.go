@@ -86,7 +86,7 @@ func (this *Seqcask) borrowWriter() *writer {
 // Returns an writer after it has been borrowed. This should
 // be called as soon as possible to make sure others can use
 // the writer. This means you probably want to return it even
-// before you checked for errors or anything.
+// before you check for errors or inspecting anything else.
 func (this *Seqcask) returnWriter(writer *writer) {
 	if glog.V(2) {
 		glog.Info("returned writer at %v", writer.sequence)
@@ -142,9 +142,9 @@ func (this *Seqcask) readValue(item Item) ([]byte, error) {
 	return valueData, nil
 }
 
-func (this *Seqcask) Get(seq uint64) (KeyValuePair, error) {
+func (this *Seqcask) Get(key uint64) (KeyValuePair, error) {
 	// TODO: support GET FROM
-	item, ok := this.seqdir.Get(seq)
+	item, ok := this.seqdir.Get(key)
 	if !ok {
 		return KeyValuePair{}, ErrNotFound
 	}
@@ -153,7 +153,7 @@ func (this *Seqcask) Get(seq uint64) (KeyValuePair, error) {
 		return KeyValuePair{}, err
 	} else {
 		return KeyValuePair{
-			Key:   seq,
+			Key:   key,
 			Value: value,
 		}, nil
 	}
@@ -163,10 +163,10 @@ func (this *Seqcask) GetLastKey() (uint64, bool) {
 	return this.seqdir.GetLastKey()
 }
 
-// GetAll returns all available values from a sequence to the maximum of the given length.
+// GetAll returns all available values from a key to the maximum of the given length.
 // If there are no values available in that range, an empty slice is returned.
-func (this *Seqcask) GetAll(sequence uint64, length int) ([]KeyValuePair, error) {
-	items := this.seqdir.GetAll(sequence, length)
+func (this *Seqcask) GetAll(key uint64, length int) ([]KeyValuePair, error) {
+	items := this.seqdir.GetAll(key, length)
 	itemCount := len(items)
 
 	values := make([]KeyValuePair, itemCount, itemCount)
@@ -182,7 +182,7 @@ func (this *Seqcask) GetAll(sequence uint64, length int) ([]KeyValuePair, error)
 			return nil, err
 		} else {
 			values[0] = KeyValuePair{
-				Key:   sequence, // TODO: get key from item
+				Key:   key, // TODO: get key from item
 				Value: value,
 			}
 			return values, nil
@@ -205,7 +205,7 @@ func (this *Seqcask) GetAll(sequence uint64, length int) ([]KeyValuePair, error)
 
 	for index, item := range items {
 		values[index] = KeyValuePair{
-			Key:   sequence + uint64(index), // TODO: get key from item
+			Key:   key + uint64(index), // TODO: get key from item
 			Value: buffer[position : position+int(item.ValueSize)],
 		}
 		position += int(item.ValueSize) + overhead

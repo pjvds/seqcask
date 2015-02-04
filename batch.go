@@ -9,17 +9,15 @@ import (
 type WriteBatch struct {
 	buffer bytes.Buffer
 
-	messagePositions []int64
-
 	// used to store the seqdir items while
 	// writing to append them all at once
 	itemBuffer []Item
-	itemCount  int
 }
 
 func NewWriteBatch() *WriteBatch {
-	batch := new(WriteBatch)
-	return batch
+	return &WriteBatch{
+		itemBuffer: make([]Item, 0, 50),
+	}
 }
 
 // Get the seqdir items.
@@ -28,14 +26,10 @@ func NewWriteBatch() *WriteBatch {
 func (this *WriteBatch) getSeqdirItems(sequence uint64, position int64) []Item {
 
 	for index, item := range this.itemBuffer {
-		// we don't want to iterate beyond the item count
-		if index == this.itemCount {
-			break
-		}
 
 		this.itemBuffer[index] = Item{
-			Sequence:  item.Sequence + uint64(index),
-			Position:  item.Position + this.messagePositions[index],
+			Sequence:  item.Sequence + sequence,
+			Position:  item.Position + position,
 			ValueSize: item.ValueSize,
 		}
 	}
@@ -77,7 +71,6 @@ func (this *WriteBatch) Put(messages ...[]byte) {
 func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
 	this.itemBuffer = this.itemBuffer[0:0]
-	this.messagePositions = this.messagePositions[0:0]
 }
 
 func (this *WriteBatch) Bytes() []byte {
