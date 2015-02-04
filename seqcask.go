@@ -235,13 +235,3 @@ func (this *Seqcask) Close() error {
 	}
 	return this.activeFile.Close()
 }
-
-func (this *Seqcask) Destroy() error {
-	filename := this.activeFile.Name()
-
-	if err := this.Close(); err != nil {
-		return err
-	}
-
-	return os.Remove(filename)
-}
