@@ -18,7 +18,7 @@ import (
 
 var (
 	msgSize   = flag.Int("msgsize", 200, "the size of the messages in byte")
-	duration  = flag.Duration("duration", 10*time.Second, "the time to run the benchmark")
+	duration  = flag.Duration("duration", 30*time.Second, "the time to run the benchmark")
 	batchSize = flag.Int("batchsize", 64, "the number of message to batch in a single put")
 	dir       = flag.String("dir", "", "the directory to store the data files")
 )
@@ -74,13 +74,4 @@ func main() {
 	elapsed := time.Since(startedAt)
 	totalMb := float64(*putted*int64(*msgSize)) / float64(1000*1024)
 	fmt.Printf("%v messages written in %v, %.0fmsg/s, %0.3fmb/s\n", *putted, elapsed, float64(*putted)/elapsed.Seconds(), totalMb/elapsed.Seconds())
-
-	dataFilename := filepath.Join(directory, "1.data")
-	stats, err := os.Stat(dataFilename)
-	if err != nil {
-		fmt.Printf("failed to stat %v: %v", dataFilename, err.Error())
-	} else {
-		fmt.Printf("%v: %vmb", dataFilename, stats.Size()/int64(1048576))
-
-	}
 }
