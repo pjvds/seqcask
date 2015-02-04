@@ -15,15 +15,6 @@ type Item struct {
 	// The sequence number of the item.
 	Sequence uint64
 
-	// The partition key of the message, ranging 0-65535.
-	// Every message that is stored is stored with a partition key. This value is
-	// set by the one that puts the message in the store. This is usually done
-	// by hashing the primary id of the message payload, for example the user id.
-	PartitionKey uint16
-
-	// The type id of the message that is stored.
-	TypeId uint16
-
 	// The size of the value in bytes.
 	ValueSize uint32
 
@@ -38,11 +29,11 @@ func NewSeqDir() *SeqDir {
 	}
 }
 
-func (this *SeqDir) Add(sequence uint64, partitionKey uint16, messageType uint16, valueSize uint32, position int64) {
+func (this *SeqDir) Add(sequence uint64, valueSize uint32, position int64) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	this.items[sequence] = Item{sequence, partitionKey, messageType, valueSize, position}
+	this.items[sequence] = Item{sequence, valueSize, position}
 
 	if this.lastKey < sequence {
 		this.lastKey = sequence
