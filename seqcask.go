@@ -22,9 +22,8 @@ const (
 )
 
 type Seqcask struct {
-	activeFile         *os.File
-	activeFilePosition int64
-	batch              WriteBatch
+	activeFile *os.File
+	batch      WriteBatch
 
 	seqdir *SeqDir
 
