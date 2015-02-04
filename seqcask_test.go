@@ -28,11 +28,9 @@ func TestPutBatchGetAll(t *testing.T) {
 	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	batch := seqcask.NewWriteBatch()
 
-	putMessages := make([]seqcask.Message, 50, 50)
+	putMessages := make([][]byte, 50, 50)
 	for index := range putMessages {
-		value := RandomValue(200)
-
-		putMessages[index] = seqcask.NewMessage(0, 0, value)
+		putMessages[index] = RandomValue(200)
 	}
 
 	batch.Put(putMessages...)
@@ -45,7 +43,7 @@ func TestPutBatchGetAll(t *testing.T) {
 	assert.Equal(t, len(values), len(putMessages))
 
 	for index, value := range values {
-		assert.Equal(t, value.Value, putMessages[index].Value)
+		assert.True(t, bytes.Equal(value.Value, putMessages[index]))
 	}
 }
 
@@ -59,10 +57,10 @@ func BenchmarkWrite1mb200bValuesAsync(b *testing.B) {
 	batches := make([]*seqcask.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
-		messages := make([]seqcask.Message, 5000, 5000)
+		messages := make([][]byte, 5000, 5000)
 
 		for index := range messages {
-			messages[index] = seqcask.NewMessage(0, 0, RandomValue(200))
+			messages[index] = RandomValue(200)
 		}
 
 		batch := seqcask.NewWriteBatch()
@@ -93,10 +91,10 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	batches := make([]*seqcask.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
-		messages := make([]seqcask.Message, 5000, 5000)
+		messages := make([][]byte, 5000, 5000)
 
 		for index := range messages {
-			messages[index] = seqcask.NewMessage(0, 0, RandomValue(200))
+			messages[index] = RandomValue(200)
 		}
 
 		batch := seqcask.NewWriteBatch()
@@ -131,7 +129,7 @@ func BenchmarkGetRange1mb200bValues(b *testing.B) {
 
 	for i := 0; i < 5000; i++ {
 		value := RandomValue(200)
-		batch.Put(seqcask.NewMessage(0, 0, value))
+		batch.Put(value)
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -191,8 +189,8 @@ func TestPutGetRoundtrip(t *testing.T) {
 	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
-	messages := []seqcask.Message{
-		seqcask.NewMessage(0, 0, []byte("pieter joost van de sande")),
+	messages := [][]byte{
+		[]byte("pieter joost van de sande"),
 	}
 
 	batch := seqcask.NewWriteBatch()
@@ -208,7 +206,7 @@ func TestPutGetRoundtrip(t *testing.T) {
 		if getValue, err := cask.Get(0); err != nil {
 			t.Fatalf("failed to get: %v", err.Error())
 		} else {
-			putValue := messages[0].Value
+			putValue := messages[0]
 
 			if !bytes.Equal(putValue, getValue.Value) {
 				t.Fatalf("put and get value differ: %v vs %v, %v vs %v", string(putValue), string(getValue.Value), putValue, getValue.Value)

@@ -6,20 +6,6 @@ import (
 	"github.com/OneOfOne/xxhash"
 )
 
-type Message struct {
-	TypeId       uint16
-	PartitionKey uint16
-	Value        []byte
-}
-
-func NewMessage(typeId uint16, partitionKey uint16, value []byte) Message {
-	return Message{
-		TypeId:       typeId,
-		PartitionKey: partitionKey,
-		Value:        value,
-	}
-}
-
 type WriteBatch struct {
 	buffer bytes.Buffer
 
@@ -58,7 +44,7 @@ func (this *WriteBatch) getSeqdirItems(sequence uint64, position int64) []Item {
 }
 
 // Puts a single value to this WriteBatch.
-func (this *WriteBatch) Put(messages ...Message) {
+func (this *WriteBatch) Put(messages ...[]byte) {
 	startSequence := this.Len()
 
 	for index, message := range messages {
@@ -66,14 +52,14 @@ func (this *WriteBatch) Put(messages ...Message) {
 		startPosition := this.buffer.Len()
 
 		// write value size
-		valueSize := uint32(len(message.Value))
+		valueSize := uint32(len(message))
 		this.buffer.Write([]byte{byte(valueSize >> 24), byte(valueSize >> 16), byte(valueSize >> 8), byte(valueSize >> 0)})
 
 		// write value
-		this.buffer.Write(message.Value)
+		this.buffer.Write(message)
 
 		// create checksum
-		checksum := xxhash.Checksum64(message.Value)
+		checksum := xxhash.Checksum64(message)
 
 		// write checksum
 		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),

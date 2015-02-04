@@ -14,28 +14,23 @@ func TestNewWriteBatch(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	batch := seqcask.NewWriteBatch()
-	typeId := uint16(3)
-	partitionKey := uint16(19)
-
-	message := seqcask.NewMessage(typeId, partitionKey, []byte("foobar"))
-	batch.Put(message)
+	value := []byte("foobar")
+	batch.Put(value)
 
 	buffer := batch.Bytes()
 
 	// length should be:
 	// value size (uint32) + value + checksum (uint64)
-	assert.Equal(t, 4+len(message.Value)+8, len(buffer))
+	assert.Equal(t, 4+len(value)+8, len(buffer))
 }
 
 func BenchmarkPut1mbOf200BytesMessages(b *testing.B) {
 	batch := seqcask.NewWriteBatch()
 	// 5000 * 200 bytes values = 1 megabyte
-	messages := make([]seqcask.Message, 5000, 5000)
+	messages := make([][]byte, 5000, 5000)
 
 	for index := range messages {
-		typeId := uint16(3)
-		partitionKey := uint16(19)
-		messages[index] = seqcask.NewMessage(typeId, partitionKey, RandomValue(200))
+		messages[index] = RandomValue(200)
 	}
 
 	b.ResetTimer()
