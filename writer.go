@@ -39,3 +39,7 @@ func (this *writer) Write(msgCount int, data []byte) (sequence uint64, position 
 	this.sequence += uint64(msgCount)
 	return
 }
+
+func (this *writer) Sync() error {
+	return this.file.Sync()
+}

@@ -215,17 +215,10 @@ func (this *Seqcask) GetAll(sequence uint64, length int) ([]KeyValuePair, error)
 }
 
 func (this *Seqcask) Sync() error {
-	// written, err := this.buffer.WriteTo(this.activeFile)
-	// if err != nil {
-	// 	return err
-	// }
-	//
-	//if written > 0 {
-	if err := this.activeFile.Sync(); err != nil {
-		return err
-	}
-	//}
-	return nil
+	writer := this.borrowWriter()
+	defer this.returnWriter(writer)
+
+	return writer.Sync()
 }
 
 func (this *Seqcask) Close() error {
