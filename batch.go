@@ -23,7 +23,6 @@ func NewMessage(typeId uint16, partitionKey uint16, value []byte) Message {
 type WriteBatch struct {
 	buffer bytes.Buffer
 
-	messages         []Message
 	messagePositions []int64
 
 	// used to store the seqdir items while
@@ -41,31 +40,30 @@ func NewWriteBatch() *WriteBatch {
 // This method may only called *ONCE* after a write was successfull
 // because it updates the item positions.
 func (this *WriteBatch) getSeqdirItems(sequence uint64, position int64) []Item {
-	items := make([]Item, len(this.messages), len(this.messages))
 
-	for index, message := range this.messages {
-		valueSize := len(message.Value)
+	for index, item := range this.itemBuffer {
+		// we don't want to iterate beyond the item count
+		if index == this.itemCount {
+			break
+		}
 
-		items[index] = Item{
-			Sequence:     sequence + uint64(index),
-			PartitionKey: message.PartitionKey,
-			TypeId:       message.TypeId,
-			ValueSize:    uint32(valueSize),
-			Position:     position + this.messagePositions[index],
+		this.itemBuffer[index] = Item{
+			Sequence:  item.Sequence + uint64(index),
+			Position:  item.Position + this.messagePositions[index],
+			ValueSize: item.ValueSize,
 		}
 	}
 
-	return items
+	return this.itemBuffer
 }
 
 // Puts a single value to this WriteBatch.
 func (this *WriteBatch) Put(messages ...Message) {
-	for _, message := range messages {
+	startSequence := this.Len()
+
+	for index, message := range messages {
 		// store the current item position
 		startPosition := this.buffer.Len()
-
-		this.messages = append(this.messages, message)
-		this.messagePositions = append(this.messagePositions, int64(startPosition))
 
 		// write value size
 		valueSize := uint32(len(message.Value))
@@ -81,17 +79,19 @@ func (this *WriteBatch) Put(messages ...Message) {
 		this.buffer.Write([]byte{byte(checksum >> 56), byte(checksum >> 48), byte(checksum >> 40), byte(checksum >> 32),
 			byte(checksum >> 24), byte(checksum >> 16), byte(checksum >> 8), byte(checksum >> 0)})
 
-		// increase item count
-		this.itemCount++
+		this.itemBuffer = append(this.itemBuffer, Item{
+			Sequence:  uint64(startSequence + index),
+			ValueSize: valueSize,
+			Position:  int64(startPosition),
+		})
 	}
 }
 
 // Reset truncates the buffer and positions
 func (this *WriteBatch) Reset() {
 	this.buffer.Reset()
-	this.messages = this.messages[0:0]
+	this.itemBuffer = this.itemBuffer[0:0]
 	this.messagePositions = this.messagePositions[0:0]
-	this.itemCount = 0
 }
 
 func (this *WriteBatch) Bytes() []byte {
@@ -99,5 +99,5 @@ func (this *WriteBatch) Bytes() []byte {
 }
 
 func (this *WriteBatch) Len() int {
-	return this.itemCount
+	return len(this.itemBuffer)
 }
