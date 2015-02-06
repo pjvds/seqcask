@@ -61,6 +61,28 @@ func (this *SeqDir) AddAll(items ...Item) {
 	this.empty = false
 }
 
+func (this *SeqDir) AddAllOffset(sequence uint64, position int64, items ...Item) {
+	if len(items) == 0 {
+		return
+	}
+
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	for _, item := range items {
+		this.items[item.Sequence] = Item{
+			Sequence:  sequence + item.Sequence,
+			Position:  position + item.Position,
+			ValueSize: item.ValueSize,
+		}
+
+		if this.lastKey < item.Sequence {
+			this.lastKey = item.Sequence
+		}
+	}
+
+	this.empty = false
+}
 func (this *SeqDir) Get(offset uint64) (Item, bool) {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
