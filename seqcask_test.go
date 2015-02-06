@@ -2,6 +2,7 @@ package seqcask_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -19,6 +20,38 @@ func RandomValue(length int) []byte {
 	}
 
 	return value
+}
+
+func TestMultipleBatchRoundtrip(t *testing.T) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
+	defer os.RemoveAll(directory)
+
+	byteOrder := binary.LittleEndian
+
+	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	batch := seqcask.NewWriteBatch()
+	batchSize := uint32(256)
+
+	buffer := make([]byte, 32/8, 32/8)
+
+	for n := uint32(1); n <= batchSize*5; n++ {
+		byteOrder.PutUint32(buffer, n)
+
+		if n%batchSize == 0 || n == 5*batchSize {
+			cask.Write(batch)
+			batch.Reset()
+		}
+	}
+
+	keyValuesPairs, err := cask.GetAll(0, int(5*batchSize))
+	assert.Nil(t, err)
+
+	for index, pair := range keyValuesPairs {
+		assert.Equal(t, index, pair.Key)
+		valueAsUint32 := byteOrder.Uint32(pair.Value)
+
+		assert.Equal(t, uint32(index+1), valueAsUint32)
+	}
 }
 
 func TestPutBatchGetAll(t *testing.T) {
