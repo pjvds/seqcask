@@ -20,26 +20,15 @@ func NewWriteBatch() *WriteBatch {
 	}
 }
 
-// Get the seqdir items.
-// This method may only called *ONCE* after a write was successfull
-// because it updates the item positions.
-func (this *WriteBatch) getSeqdirItems(sequence uint64, position int64) []Item {
-
-	for index, item := range this.itemBuffer {
-
-		this.itemBuffer[index] = Item{
-			Sequence:  item.Sequence + sequence,
-			Position:  item.Position + position,
-			ValueSize: item.ValueSize,
-		}
-	}
-
-	return this.itemBuffer
-}
-
 // Puts a single value to this WriteBatch.
 func (this *WriteBatch) Put(messages ...[]byte) {
 	startSequence := this.Len()
+
+	// Why don't we check for errors when writing to the buffer?
+	// This is because the error result is always nil. Write will
+	// just write the bytes to memory and that should not fail.
+	// The only thing that can go wrong is that the buffer becomes
+	// too large. If that happens Write will panic with ErrTooLarge.
 
 	for index, message := range messages {
 		// store the current item position
