@@ -18,10 +18,6 @@ func NewBroker() (*Broker, error) {
 		return nil, err
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
 	return &Broker{
 		id: fmt.Sprintf("%v-%v", hostname, os.Getpid()),
 	}, nil

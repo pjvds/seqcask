@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/hashicorp/consul/api"
 )
 
+// Session represents an active session to the cluster.
 type Session struct {
 	// the unique identifier for this Session service, hostname + pid
 	id string
@@ -17,7 +17,7 @@ type Session struct {
 	sessionId string
 
 	consulClient *api.Client
-	heartbeat    *heartbeat
+	heartbeat    *heartbeater
 
 	Lost    chan struct{}
 	destroy chan struct{}
@@ -29,12 +29,18 @@ func Join(brokerId string) (*Session, error) {
 		Lost:    make(chan struct{}),
 		destroy: make(chan struct{}),
 	}
+
+	log.Infof("connecting to consul")
 	if err := session.connect(); err != nil {
 		return nil, err
 	}
+
+	log.Infof("announcing at cluster")
 	if err := session.announce(); err != nil {
 		return nil, err
 	}
+
+	log.Infof("creating session")
 	if err := session.create(); err != nil {
 		return nil, err
 	}
@@ -52,18 +58,17 @@ func (this *Session) do() {
 
 	select {
 	case <-this.heartbeat.Done:
-		glog.V(2).Infof("heartbeat stopped")
+		log.Infof("heartbeat stopped")
 		return
 
 	case <-this.destroy:
-		glog.V(2).Infof("destroying session")
+		log.Infof("destroying session")
 		return
 	}
 }
 
 func (this *Session) connect() (err error) {
 	config := api.DefaultConfig()
-	glog.V(1).Infof("connecting to consul %v", config.Address)
 
 	if this.consulClient, err = api.NewClient(config); err != nil {
 		err = fmt.Errorf("failed to connect to consul at %v: %v", config.Address, err.Error())
@@ -77,14 +82,14 @@ func (this *Session) announce() (err error) {
 	// register this instance as a service
 	if err = agent.ServiceRegister(&api.AgentServiceRegistration{
 		ID:   this.id,
-		Name: "Session",
+		Name: "seqcask",
 		Check: &api.AgentServiceCheck{
 			TTL: "1s",
 		},
 	}); err != nil {
-		return fmt.Errorf("failed to register Session at consul agent: %v", err.Error())
+		return fmt.Errorf("failed to register %v at consul agent: %v", this.id, err.Error())
 	}
-	glog.V(2).Info("registered Session at consul")
+	log.Infof("registered %v at consul", this.id)
 
 	// get check id service to heartbeat later
 	var checks map[string]*api.AgentCheck
@@ -103,12 +108,14 @@ func (this *Session) announce() (err error) {
 	}
 
 	this.checkId = serviceCheck.CheckID
+	log.Infof("found check id %v for %v", this.checkId, this.id)
 
-	this.heartbeat, err = newHeartbeat(this.consulClient, this.checkId, 100*time.Millisecond, 1*time.Second)
-
+	this.heartbeat, err = newHeartbeater(this.consulClient, this.checkId, 100*time.Millisecond, 1*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to initialize heartbeat: %v", err.Error())
 	}
+
+	log.Infof("heartbeat initialized")
 	return
 }
 
@@ -123,7 +130,6 @@ func (this *Session) create() (err error) {
 		return fmt.Errorf("failed to create consul session: %v", err.Error())
 	}
 	return
-
 }
 
 func (this *Session) Destroy() {
