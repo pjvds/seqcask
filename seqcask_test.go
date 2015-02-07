@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,15 +11,6 @@ import (
 	"github.com/pjvds/seqcask"
 	"github.com/stretchr/testify/assert"
 )
-
-func RandomValue(length int) []byte {
-	value := make([]byte, length, length)
-	for i := 0; i < length; i++ {
-		value[i] = byte(rand.Intn(255))
-	}
-
-	return value
-}
 
 func TestMultipleBatchRoundtrip(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
