@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/pjvds/seqcask"
+	"github.com/pjvds/seqcask/storage"
 )
 
 var (
@@ -27,12 +27,12 @@ func main() {
 	flag.Parse()
 	glog.Info("starting...")
 
-	directory, _ := ioutil.TempDir("", "seqcask_bench_")
+	directory, _ := ioutil.TempDir("", "storage_bench_")
 	if len(*dir) > 0 {
 		directory = *dir
 	}
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 30000000000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 30000000000)
 	defer cask.Close()
 	defer os.RemoveAll(directory)
 
@@ -51,7 +51,7 @@ func main() {
 	for i := 0; i < 16; i++ {
 		work.Add(1)
 		go func() {
-			batch := seqcask.NewWriteBatch()
+			batch := storage.NewWriteBatch()
 			for index := 0; index < *batchSize; index++ {
 				batch.Put(value)
 			}

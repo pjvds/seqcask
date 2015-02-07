@@ -1,4 +1,4 @@
-package seqcask
+package storage_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func BenchmarkSeqDirAdds(b *testing.B) {
-	seqdir := NewSeqDir()
+	seqdir := storage.NewSeqDir()
 
 	b.StartTimer()
 	for iteration := 0; iteration < b.N; iteration++ {
@@ -17,7 +17,7 @@ func BenchmarkSeqDirAdds(b *testing.B) {
 }
 
 func TestAddGet(t *testing.T) {
-	seqdir := NewSeqDir()
+	seqdir := storage.NewSeqDir()
 	sequence := uint64(0)
 	valueSize := uint32(12)
 	position := int64(88)
@@ -33,7 +33,7 @@ func TestAddGet(t *testing.T) {
 }
 
 func TestAddAllGetAll(t *testing.T) {
-	seqdir := NewSeqDir()
+	seqdir := storage.NewSeqDir()
 
 	sequence := uint64(0)
 	valueSize := uint32(12)
@@ -57,7 +57,7 @@ func TestAddAllGetAll(t *testing.T) {
 }
 
 func TestGetNonExisting(t *testing.T) {
-	seqdir := NewSeqDir()
+	seqdir := storage.NewSeqDir()
 	_, ok := seqdir.Get(0)
 
 	assert.False(t, ok)

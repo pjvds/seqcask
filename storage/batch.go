@@ -1,4 +1,4 @@
-package seqcask
+package storage
 
 import (
 	"bytes"

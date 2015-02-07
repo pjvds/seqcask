@@ -1,4 +1,4 @@
-package seqcask_test
+package storage_test
 
 import (
 	"testing"
