@@ -3,6 +3,7 @@ package storage_test
 import (
 	"testing"
 
+	"github.com/pjvds/seqcask/storage"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,7 +39,7 @@ func TestAddAllGetAll(t *testing.T) {
 	sequence := uint64(0)
 	valueSize := uint32(12)
 
-	items := make([]Item, 255, 255)
+	items := make([]storage.Item, 255, 255)
 	for index := range items {
 		items[index].Sequence = uint64(index)
 		items[index].ValueSize = valueSize

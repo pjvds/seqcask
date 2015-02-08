@@ -3,17 +3,18 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/pjvds/seqcask"
+	"github.com/pjvds/randombytes"
+	"github.com/pjvds/seqcask/storage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewWriteBatch(t *testing.T) {
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 	assert.NotNil(t, batch)
 }
 
 func TestWrite(t *testing.T) {
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 	value := []byte("foobar")
 	batch.Put(value)
 
@@ -25,12 +26,12 @@ func TestWrite(t *testing.T) {
 }
 
 func BenchmarkPut1mbOf200BytesMessages(b *testing.B) {
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 	// 5000 * 200 bytes values = 1 megabyte
 	messages := make([][]byte, 5000, 5000)
 
 	for index := range messages {
-		messages[index] = RandomValue(200)
+		messages[index] = randombytes.Make(200)
 	}
 
 	b.ResetTimer()

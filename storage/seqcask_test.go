@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pjvds/seqcask"
+	"github.com/pjvds/randombytes"
+	"github.com/pjvds/seqcask/storage"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,8 +19,8 @@ func TestMultipleBatchRoundtrip(t *testing.T) {
 
 	byteOrder := binary.LittleEndian
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
-	batch := seqcask.NewWriteBatch()
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	batch := storage.NewWriteBatch()
 	batchSize := uint32(256)
 
 	buffer := make([]byte, 32/8, 32/8)
@@ -48,12 +49,12 @@ func TestPutBatchGetAll(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
-	batch := seqcask.NewWriteBatch()
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	batch := storage.NewWriteBatch()
 
 	putMessages := make([][]byte, 50, 50)
 	for index := range putMessages {
-		putMessages[index] = RandomValue(200)
+		putMessages[index] = randombytes.Make(200)
 	}
 
 	batch.Put(putMessages...)
@@ -74,19 +75,19 @@ func BenchmarkWrite1mb200bValuesAsync(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000*200)
 	defer cask.Close()
 
-	batches := make([]*seqcask.WriteBatch, 50, 50)
+	batches := make([]*storage.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
 		messages := make([][]byte, 5000, 5000)
 
 		for index := range messages {
-			messages[index] = RandomValue(200)
+			messages[index] = randombytes.Make(200)
 		}
 
-		batch := seqcask.NewWriteBatch()
+		batch := storage.NewWriteBatch()
 		batch.Put(messages...)
 
 		batches[batchIndex] = batch
@@ -108,19 +109,19 @@ func BenchmarkWrite1mb200bValuesSync(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000*200)
 	defer cask.Close()
 
-	batches := make([]*seqcask.WriteBatch, 50, 50)
+	batches := make([]*storage.WriteBatch, 50, 50)
 	for batchIndex := range batches {
 		// 5000 * 200 bytes values = 1 megabyte
 		messages := make([][]byte, 5000, 5000)
 
 		for index := range messages {
-			messages[index] = RandomValue(200)
+			messages[index] = randombytes.Make(200)
 		}
 
-		batch := seqcask.NewWriteBatch()
+		batch := storage.NewWriteBatch()
 		batch.Put(messages...)
 
 		batches[batchIndex] = batch
@@ -145,33 +146,29 @@ func BenchmarkGetRange1mb200bValues(b *testing.B) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 
 	for i := 0; i < 5000; i++ {
-		value := RandomValue(200)
+		value := randombytes.Make(200)
 		batch.Put(value)
 	}
 
-	for i := 0; i < b.N; i++ {
-		if err := cask.Write(batch); err != nil {
-			b.Fatalf("failed to write: %v", err.Error())
-		}
+	if err := cask.Write(batch); err != nil {
+		b.Fatalf("failed to write: %v", err.Error())
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.SetBytes(5000 * 200)
 
-		from := uint64(i * 5000)
-
-		if items, err := cask.GetAll(from, 5000); err != nil {
+		if items, err := cask.GetAll(0, 5000); err != nil {
 			b.Fatalf("failed to read range: %v", err.Error())
 		} else if len(items) != 5000 {
 			lastKey, _ := cask.GetLastKey()
-			b.Fatalf("too short read from sequence %v at iteration %v: %v, last key in db %v", from, i, len(items), lastKey)
+			b.Fatalf("too short read from sequence %v at iteration %v: %v, last key in db %v", 0, i, len(items), lastKey)
 		}
 	}
 	b.StopTimer()
@@ -181,7 +178,7 @@ func TestCreate(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 0)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 0)
 	defer cask.Close()
 }
 
@@ -189,15 +186,15 @@ func TestCreate(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
-	messages := []seqcask.Message{
-		seqcask.NewMessage(0, 0, []byte("pieter joost van de sande")),
-		seqcask.NewMessage(0, 0, []byte("tomas roos")),
+	messages := []storage.Message{
+		storage.NewMessage(0, 0, []byte("pieter joost van de sande")),
+		storage.NewMessage(0, 0, []byte("tomas roos")),
 	}
 
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 	batch.Put(messages)
 
 	if err := cask.Write(batch); err != nil {
@@ -209,14 +206,14 @@ func TestPutGetRoundtrip(t *testing.T) {
 	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	defer os.RemoveAll(directory)
 
-	cask := seqcask.MustCreate(filepath.Join(directory, "db.data"), 5000)
+	cask := storage.MustCreate(filepath.Join(directory, "db.data"), 5000)
 	defer cask.Close()
 
 	messages := [][]byte{
 		[]byte("pieter joost van de sande"),
 	}
 
-	batch := seqcask.NewWriteBatch()
+	batch := storage.NewWriteBatch()
 	batch.Put(messages...)
 
 	if err := cask.Write(batch); err != nil {
