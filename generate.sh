@@ -11,4 +11,5 @@ then
     exit 1
 fi
 
-protoc --go_out=. *.proto
+protoc --go_out=request/. request/*.proto
+protoc --go_out=response/. response/*.proto
