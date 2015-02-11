@@ -1,0 +1,7 @@
+package request;
+
+message Append {
+    required string Topic = 1;
+    required uint32 Partition = 2;
+    repeated bytes Messages = 3;
+}
