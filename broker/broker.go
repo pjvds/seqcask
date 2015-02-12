@@ -90,12 +90,12 @@ func (this *Broker) requestWorker(socket mangos.Socket) {
 	batch := storage.NewWriteBatch()
 
 	for {
-		log.Info("waiting for message")
+		//log.Info("waiting for message")
 		if message, err = socket.RecvMsg(); err != nil {
 			log.Info("request worker failed: %v", err.Error())
 			return
 		}
-		log.Info("request message received")
+		//log.Info("request message received")
 
 		if message.Body[0] == request.T_Append {
 			topicLength := int(message.Body[1])
@@ -122,7 +122,7 @@ func (this *Broker) requestWorker(socket mangos.Socket) {
 			if err := socket.SendMsg(message); err != nil {
 				log.WithField("error", err).Warn("send message error")
 			}
-			log.Info("reply send")
+			//log.Info("reply send")
 
 			batch.Reset()
 		} else {
