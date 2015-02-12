@@ -16,7 +16,7 @@ var (
 	topic     = flag.String("topic", "test", "the topic to write to")
 	partition = flag.Int("partition", 1, "the partition to write to")
 
-	workers = flag.Int("workers", 50, "the workers that will be sending")
+	workers = flag.Int("workers", 5000, "the workers that will be sending")
 )
 
 func main() {
@@ -35,7 +35,10 @@ func main() {
 			defer work.Done()
 
 			for n := 0; n < (1e6 / *workers); n++ {
-				producer.Publish(*topic, uint16(*partition), message)
+				result := producer.Publish(*topic, uint16(*partition), message)
+				if err := result.WaitForDone(1 * time.Second); err != nil {
+					fmt.Printf("publish failed: %v\n", err.Error())
+				}
 			}
 		}()
 	}
