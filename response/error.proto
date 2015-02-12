@@ -1,6 +1,0 @@
-package response;
-
-message Error {
-    required int Code = 1;
-    required string Error = 2;
-}
