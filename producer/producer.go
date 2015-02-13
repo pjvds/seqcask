@@ -23,14 +23,21 @@ type TopicPartition struct {
 
 type Producer struct {
 	workers    sync.WaitGroup
-	partitions map[TopicPartition]chan PublishResult
+	partitions map[TopicPartition]*partition
 }
 
-func NewProducer(brokerAddress string) (*Producer, error) {
-	producer := &Producer{
-		partitions: make(map[TopicPartition]chan PublishResult),
-	}
+type partition struct {
+	topic     string
+	partition uint16
 
+	requests chan PublishResult
+
+	socket mangos.Socket
+
+	Done chan struct{}
+}
+
+func newPartition(brokerAddress string, topic string, part uint16) (*partition, error) {
 	socket, err := req.NewSocket()
 	if err != nil {
 		return nil, err
@@ -43,60 +50,26 @@ func NewProducer(brokerAddress string) (*Producer, error) {
 		return nil, err
 	}
 
-	testTopic := make(chan PublishResult)
-	producer.partitions[TopicPartition{"test", 1}] = testTopic
+	p := &partition{
+		topic:     topic,
+		partition: part,
 
-	go producer.worker(socket, "test", 1, testTopic)
+		requests: make(chan PublishResult),
+		Done:     make(chan struct{}),
 
-	return producer, nil
-}
-
-type PublishResult struct {
-	Topic     string
-	Partition uint16
-	Body      []byte
-
-	done       chan error
-	reportOnce sync.Once
-}
-
-func (this PublishResult) report(err error) {
-	this.done <- err
-	close(this.done)
-}
-
-func (this PublishResult) WaitForDone(timeout time.Duration) error {
-	select {
-	case <-time.After(timeout):
-		return errors.New("timeout")
-	case err := <-this.done:
-		return err
+		socket: socket,
 	}
+	go p.do()
+
+	return p, nil
 }
 
-func (this *Producer) Publish(topic string, partition uint16, body []byte) PublishResult {
-	requests, ok := this.partitions[TopicPartition{topic, partition}]
-	request := PublishResult{
-		Topic:     topic,
-		Partition: partition,
-		Body:      body,
+func (this *partition) do() {
+	defer close(this.Done)
 
-		done: make(chan error, 1),
-	}
-
-	if !ok {
-		request.report(fmt.Errorf("no found"))
-		return request
-	}
-
-	requests <- request
-	return request
-}
-
-func (this *Producer) worker(socket mangos.Socket, topic string, partition uint16, requests chan PublishResult) {
 	locallog := log.WithFields(logrus.Fields{
-		"topic":     topic,
-		"partition": partition,
+		"topic":     this.topic,
+		"partition": this.partition,
 	})
 
 	// locallog.Infof("started")
@@ -106,26 +79,25 @@ func (this *Producer) worker(socket mangos.Socket, topic string, partition uint1
 	var request PublishResult
 	var ok bool
 
-	maxDataSize := int(1e6) // 5mb
+	maxDataSize := int(128e3) // 64 kb
 
 	queue := make([]PublishResult, 0)
 
 	// write header
 	buffer.WriteByte(0)
-	buffer.WriteByte(byte(len(topic)))
-	buffer.WriteString(topic)
-	binary.Write(&buffer, binary.LittleEndian, partition)
+	buffer.WriteByte(byte(len(this.topic)))
+	buffer.WriteString(this.topic)
+	binary.Write(&buffer, binary.LittleEndian, this.partition)
 
 	// remember data starting point
 	dataStart := buffer.Len()
 
 	for {
 		// wait for first request
-		if request, ok = <-requests; !ok {
+		if request, ok = <-this.requests; !ok {
 			// request channel closed
 			return
 		}
-		// locallog.Info("request received")
 
 		// truncate to data starting point
 		buffer.Truncate(dataStart)
@@ -141,7 +113,7 @@ func (this *Producer) worker(socket mangos.Socket, topic string, partition uint1
 		flush := false
 		for !flush && buffer.Len() < maxDataSize {
 			select {
-			case request = <-requests:
+			case request = <-this.requests:
 				// locallog.Info("request received")
 				queue = append(queue, request)
 				binary.Write(&buffer, binary.LittleEndian, uint32(len(request.Body)))
@@ -153,21 +125,21 @@ func (this *Producer) worker(socket mangos.Socket, topic string, partition uint1
 			}
 		}
 
-		log.WithFields(logrus.Fields{
-			"size":      buffer.Len(),
-			"msg_count": len(queue),
-		}).Info("flushing")
+		// log.WithFields(logrus.Fields{
+		// 	"size":      buffer.Len(),
+		// 	"msg_count": len(queue),
+		// }).Info("flushing")
 
 		// send request to broker
 		// locallog.Info("message sending")
-		if err := socket.SetOption(mangos.OptionSendDeadline, 1*time.Second); err != nil {
+		if err := this.socket.SetOption(mangos.OptionSendDeadline, 250*time.Second); err != nil {
 			locallog.WithFields(logrus.Fields{
 				"error":  err,
 				"option": mangos.OptionSendDeadline}).Error("failed to set option")
 			continue
 		}
 
-		if err := socket.Send(buffer.Bytes()); err != nil {
+		if err := this.socket.Send(buffer.Bytes()); err != nil {
 			locallog.WithField("error", err).Error("send failed")
 
 			// failed to send
@@ -178,14 +150,14 @@ func (this *Producer) worker(socket mangos.Socket, topic string, partition uint1
 		}
 
 		// locallog.Info("message receiving")
-		if err := socket.SetOption(mangos.OptionRecvDeadline, 1*time.Second); err != nil {
+		if err := this.socket.SetOption(mangos.OptionRecvDeadline, 1*time.Second); err != nil {
 			locallog.WithFields(logrus.Fields{
 				"error":  err,
 				"option": mangos.OptionRecvDeadline}).Error("failed to set option")
 			continue
 		}
 
-		if reply, err := socket.Recv(); err != nil {
+		if reply, err := this.socket.Recv(); err != nil {
 			locallog.WithField("error", err).Error("failed to receive")
 
 			// failed to receive
@@ -222,4 +194,74 @@ func (this *Producer) worker(socket mangos.Socket, topic string, partition uint1
 			}
 		}
 	}
+}
+
+func (this *partition) Publish(request PublishResult) {
+	this.requests <- request
+}
+
+func NewProducer(brokerAddress string) (*Producer, error) {
+	producer := &Producer{
+		partitions: make(map[TopicPartition]*partition),
+	}
+
+	p1, err := newPartition(brokerAddress, "test", 1)
+	if err != nil {
+		return nil, err
+	}
+	producer.partitions[TopicPartition{"test", 1}] = p1
+
+	p2, err := newPartition(brokerAddress, "test", 2)
+	if err != nil {
+		return nil, err
+	}
+	producer.partitions[TopicPartition{"test", 2}] = p2
+
+	p3, err := newPartition(brokerAddress, "test", 3)
+	if err != nil {
+		return nil, err
+	}
+	producer.partitions[TopicPartition{"test", 3}] = p3
+	return producer, nil
+}
+
+type PublishResult struct {
+	Topic     string
+	Partition uint16
+	Body      []byte
+
+	done chan error
+}
+
+func (this PublishResult) report(err error) {
+	this.done <- err
+	close(this.done)
+}
+
+func (this PublishResult) WaitForDone(timeout time.Duration) error {
+	select {
+	case <-time.After(timeout):
+		return errors.New("timeout")
+	case err := <-this.done:
+		return err
+	}
+}
+
+func (this *Producer) Publish(topic string, part uint16, body []byte) PublishResult {
+	partition, ok := this.partitions[TopicPartition{topic, part}]
+	request := PublishResult{
+		Topic:     topic,
+		Partition: part,
+		Body:      body,
+
+		done: make(chan error, 1),
+	}
+
+	if !ok {
+		request.report(fmt.Errorf("no found"))
+		return request
+	}
+
+	partition.Publish(request)
+	return request
 }
