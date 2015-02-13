@@ -39,7 +39,7 @@ func main() {
 
 			for n := 0; n < (2e6 / *workers); n++ {
 				result := producer.Publish(*topic, (uint16(3)%uint16(*partition) + uint16(1)), message)
-				if err := result.WaitForDone(1 * time.Second); err != nil {
+				if err := result.WaitForDone(); err != nil {
 					fmt.Printf("publish failed: %v\n", err.Error())
 				}
 				//fmt.Printf("%v\n", n)
