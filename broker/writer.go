@@ -1,6 +1,11 @@
 package broker
 
-import "github.com/pjvds/seqcask/storage"
+import (
+	"time"
+
+	"github.com/pjvds/seqcask/storage"
+	"github.com/rcrowley/go-metrics"
+)
 
 type PartitionWriteRequest struct {
 	Messages [][]byte
@@ -55,6 +60,10 @@ func NewTopicPartitionWriter(topic string, partition uint16, requests chan *Part
 func (this *TopicPartitionWriter) do() {
 	defer close(this.Done)
 
+	transactionDuration := metrics.NewRegisteredTimer("writer.transation.duration", metrics.DefaultRegistry)
+	transactionRequestCount := metrics.NewRegisteredHistogram("writer.transaction.request-count", metrics.DefaultRegistry)
+	transactionSize := metrics.NewRegisteredHistogram("writer.transaction.size-in-bytes", metrics.DefaultRegistry)
+
 	var request *PartitionWriteRequest
 	var ok bool
 	var requests []*PartitionWriteRequest
@@ -65,6 +74,8 @@ func (this *TopicPartitionWriter) do() {
 		if request, ok = <-this.requests; !ok {
 			return
 		}
+
+		startedAt := time.Now()
 
 		batch.Put(request.Messages...)
 		requests = append(requests, request)
@@ -82,12 +93,22 @@ func (this *TopicPartitionWriter) do() {
 			}
 		}
 
+		transactionSize.Update(batch.DataSize())
+		transactionRequestCount.Update(len(requests))
+
 		err := this.store.Write(batch)
+
+		if err == nil {
+			err = this.store.Sync()
+		}
+
 		for _, request = range requests {
 			request.report(err)
 		}
 
 		batch.Reset()
 		requests = requests[0:0]
+
+		transactionDuration.UpdateSince(startedAt)
 	}
 }
