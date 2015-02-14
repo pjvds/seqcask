@@ -184,11 +184,16 @@ func (this *Client) do() {
 		case send := <-send:
 			this.inflight[send.Request.Id] = send
 		case response := <-responses:
+			if response == nil {
+				return
+			}
+
 			context, ok := this.inflight[response.Id]
 			if !ok {
 				glog.V(2).Infof("no inflight request found id %v", response.Id)
 				continue
 			}
+			delete(this.inflight, response.Id)
 
 			context.Response = response
 			close(context.done)
@@ -307,14 +312,19 @@ func (this *ConnectionServer) do() {
 		for {
 			request, err := this.readNextRequest(reader)
 			if err != nil {
+				glog.V(2).Infof("failed to read request: %v", err.Error())
 				return
 			}
 
 			go func(request *Request) {
-				if response, _ := this.handler.Handle(request); response != nil {
+				if response, err := this.handler.Handle(request); err != nil {
+					glog.V(2).Infof("failed to handle request: %v", err.Error())
+				} else {
 					select {
 					case responses <- response:
+						glog.V(2).Infof("response %v dispatched", response.Id)
 					case <-closed:
+						glog.V(2).Infof("connection server closed")
 					}
 				}
 			}(request)
