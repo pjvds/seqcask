@@ -17,6 +17,7 @@ import (
 	"github.com/pjvds/seqcask/request"
 	"github.com/pjvds/seqcask/response"
 	"github.com/pjvds/seqcask/storage"
+	"github.com/rcrowley/go-metrics"
 )
 
 type Broker struct {
@@ -152,13 +153,15 @@ func (this *Broker) requestWorker(socket mangos.Socket) {
 		},
 	}
 
+	requestCount := metrics.NewRegisteredCounter("broker.request.count", metrics.DefaultRegistry)
 	for {
-
 		//log.Info("waiting for message")
 		if message, err = socket.RecvMsg(); err != nil {
 			log.Info("request worker failed: %v", err.Error())
 			return
 		}
+		requestCount.Inc(1)
+
 		//log.Info("request message received")
 		go this.handleRequest(socket, message, pool)
 	}
