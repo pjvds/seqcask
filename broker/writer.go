@@ -61,8 +61,8 @@ func (this *TopicPartitionWriter) do() {
 	defer close(this.Done)
 
 	transactionDuration := metrics.NewRegisteredTimer("writer.transation.duration", metrics.DefaultRegistry)
-	transactionRequestCount := metrics.NewRegisteredHistogram("writer.transaction.request-count", metrics.DefaultRegistry)
-	transactionSize := metrics.NewRegisteredHistogram("writer.transaction.size-in-bytes", metrics.DefaultRegistry)
+	transactionRequestCount := metrics.NewRegisteredGauge("writer.transaction.request-count", metrics.DefaultRegistry)
+	transactionSize := metrics.NewRegisteredGauge("writer.transaction.size-in-bytes", metrics.DefaultRegistry)
 
 	var request *PartitionWriteRequest
 	var ok bool
@@ -81,7 +81,7 @@ func (this *TopicPartitionWriter) do() {
 		requests = append(requests, request)
 
 		var flush bool
-		for !flush && batch.DataSize() < 5e6 {
+		for !flush && batch.DataSize() < 5000000 {
 			select {
 			case request, ok = <-this.requests:
 				if ok {
@@ -93,8 +93,8 @@ func (this *TopicPartitionWriter) do() {
 			}
 		}
 
-		transactionSize.Update(batch.DataSize())
-		transactionRequestCount.Update(len(requests))
+		transactionSize.Update(int64(batch.DataSize()))
+		transactionRequestCount.Update(int64(len(requests)))
 
 		err := this.store.Write(batch)
 
