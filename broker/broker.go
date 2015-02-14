@@ -26,7 +26,7 @@ type Broker struct {
 
 	socket mangos.Socket
 
-	partitions map[uint16]*storage.Seqcask
+	partitions map[uint16]chan *PartitionWriteRequest
 }
 
 func NewBroker() (*Broker, error) {
@@ -36,11 +36,15 @@ func NewBroker() (*Broker, error) {
 		return nil, err
 	}
 
-	partitions := make(map[uint16]*storage.Seqcask)
+	partitions := make(map[uint16]chan *PartitionWriteRequest)
 
 	for i := uint16(1); i < 4; i++ {
 		filename := filepath.Join(directory, fmt.Sprintf("%v.data", i))
-		partitions[i] = storage.MustCreate(filename, 128*1000*1000)
+		store := storage.MustCreate(filename, 128*1000*1000)
+		requests := make(chan *PartitionWriteRequest)
+
+		NewTopicPartitionWriter("test", i, requests, store)
+		partitions[i] = requests
 	}
 
 	return &Broker{
@@ -98,31 +102,29 @@ func (this *Broker) runClientApi() error {
 
 func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message, pool *sync.Pool) {
 	if message.Body[0] == request.T_Append {
-		batch := pool.Get().(*storage.WriteBatch)
-		defer pool.Put(batch)
-
 		topicLength := int(message.Body[1])
 		//topic := string(message.Body[2 : 2+topicLength])
 		partition := binary.LittleEndian.Uint16(message.Body[2+topicLength:])
 
 		messages := message.Body[2+topicLength+2:]
+		writeMessages := make([][]byte, 0)
 
 		for i := 0; i < len(messages); {
 			length := binary.LittleEndian.Uint32(messages[i:])
 			i += 4
 
 			message := messages[i : i+int(length)]
-			batch.Put(message)
+			writeMessages = append(writeMessages, message)
 
 			// log.Infof("message %v/%v: %v", topic, partition, string(message))
 
 			i += int(length)
 		}
 
-		store := this.partitions[partition]
-		err := store.Write(batch)
+		writeRequest := NewPartitionWriteRequest(writeMessages)
+		this.partitions[partition] <- writeRequest
 
-		store.Sync()
+		err := writeRequest.WaitForDone()
 
 		if err != nil {
 			message.Body = append([]byte{0x01}, []byte(err.Error())...)
@@ -134,8 +136,6 @@ func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message,
 			log.WithField("error", err).Warn("send message error")
 		}
 		//log.Info("reply send")
-
-		batch.Reset()
 	} else {
 		message.Body = append([]byte{response.T_ERROR}, []byte("unknown request type")...)
 		socket.SendMsg(message)

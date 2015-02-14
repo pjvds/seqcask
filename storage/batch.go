@@ -66,6 +66,10 @@ func (this *WriteBatch) Bytes() []byte {
 	return this.buffer.Bytes()
 }
 
+func (this *WriteBatch) DataSize() int {
+	return this.buffer.Len()
+}
+
 func (this *WriteBatch) Len() int {
 	return len(this.itemBuffer)
 }
