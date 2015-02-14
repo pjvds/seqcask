@@ -125,11 +125,6 @@ func (this *partition) do() {
 			}
 		}
 
-		// log.WithFields(logrus.Fields{
-		// 	"size":      buffer.Len(),
-		// 	"msg_count": len(queue),
-		// }).Info("flushing")
-
 		// send request to broker
 		// locallog.Info("message sending")
 		if err := this.socket.SetOption(mangos.OptionSendDeadline, 250*time.Second); err != nil {
@@ -230,21 +225,19 @@ type PublishResult struct {
 	Partition uint16
 	Body      []byte
 
-	done chan error
+	Error error
+
+	done chan struct{}
 }
 
 func (this PublishResult) report(err error) {
-	this.done <- err
+	this.Error = err
 	close(this.done)
 }
 
-func (this PublishResult) WaitForDone(timeout time.Duration) error {
-	select {
-	case <-time.After(timeout):
-		return errors.New("timeout")
-	case err := <-this.done:
-		return err
-	}
+func (this PublishResult) WaitForDone() error {
+	<-this.done
+	return this.Error
 }
 
 func (this *Producer) Publish(topic string, part uint16, body []byte) PublishResult {
@@ -254,7 +247,7 @@ func (this *Producer) Publish(topic string, part uint16, body []byte) PublishRes
 		Partition: part,
 		Body:      body,
 
-		done: make(chan error, 1),
+		done: make(chan struct{}),
 	}
 
 	if !ok {

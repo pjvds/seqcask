@@ -1,8 +1,11 @@
 package broker
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -22,17 +25,28 @@ type Broker struct {
 	clientApiAddress string
 
 	socket mangos.Socket
+
+	partitions map[uint16]*storage.Seqcask
 }
 
 func NewBroker() (*Broker, error) {
+	directory, _ := ioutil.TempDir("", "bitcast_test_")
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
 
+	partitions := make(map[uint16]*storage.Seqcask)
+
+	for i := uint16(1); i < 4; i++ {
+		filename := filepath.Join(directory, fmt.Sprintf("%v.data", i))
+		partitions[i] = storage.MustCreate(filename, 128*1000*1000)
+	}
+
 	return &Broker{
 		id:               fmt.Sprintf("%v-%v", hostname, os.Getpid()),
 		clientApiAddress: "tcp://127.0.0.1:40899",
+		partitions:       partitions,
 	}, nil
 }
 
@@ -84,36 +98,44 @@ func (this *Broker) runClientApi() error {
 
 func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message, pool *sync.Pool) {
 	if message.Body[0] == request.T_Append {
-		// batch := pool.Get().(*storage.WriteBatch)
-		// defer pool.Put(batch)
+		batch := pool.Get().(*storage.WriteBatch)
+		defer pool.Put(batch)
 
-		// topicLength := int(message.Body[1])
-		// //topic := string(message.Body[2 : 2+topicLength])
-		// //partition := binary.LittleEndian.Uint16(message.Body[2+topicLength:])
+		topicLength := int(message.Body[1])
+		//topic := string(message.Body[2 : 2+topicLength])
+		partition := binary.LittleEndian.Uint16(message.Body[2+topicLength:])
 
-		// messages := message.Body[2+topicLength+2:]
+		messages := message.Body[2+topicLength+2:]
 
-		// for i := 0; i < len(messages); {
-		// 	length := binary.LittleEndian.Uint32(messages[i:])
-		// 	i += 4
+		for i := 0; i < len(messages); {
+			length := binary.LittleEndian.Uint32(messages[i:])
+			i += 4
 
-		// 	message := messages[i : i+int(length)]
-		// 	batch.Put(message)
+			message := messages[i : i+int(length)]
+			batch.Put(message)
 
-		// 	// log.Infof("message %v/%v: %v", topic, partition, string(message))
+			// log.Infof("message %v/%v: %v", topic, partition, string(message))
 
-		// 	i += int(length)
-		// }
+			i += int(length)
+		}
 
-		message.Body = []byte{0x00}
+		store := this.partitions[partition]
+		err := store.Write(batch)
 
+		store.Sync()
+
+		if err != nil {
+			message.Body = append([]byte{0x01}, []byte(err.Error())...)
+		} else {
+			message.Body = []byte{0x00}
+		}
 		socket.SetOption(mangos.OptionSendDeadline, 1*time.Second)
 		if err := socket.SendMsg(message); err != nil {
 			log.WithField("error", err).Warn("send message error")
 		}
 		//log.Info("reply send")
 
-		//batch.Reset()
+		batch.Reset()
 	} else {
 		message.Body = append([]byte{response.T_ERROR}, []byte("unknown request type")...)
 		socket.SendMsg(message)
