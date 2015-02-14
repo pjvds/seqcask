@@ -174,7 +174,7 @@ func (this *Client) do() {
 
 			responses <- &Response{
 				Id:      id,
-				Payload: payload[1:],
+				Payload: payload,
 			}
 		}
 	}()
