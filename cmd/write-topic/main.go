@@ -15,9 +15,10 @@ import (
 var (
 	address   = flag.String("address", "tcp://127.0.0.1:40899", "the address of the broker")
 	topic     = flag.String("topic", "test", "the topic to write to")
-	partition = flag.Int("partition", 1, "the partition to write to")
+	partition = flag.Int("partition", 3, "the partition to write to")
+	count     = flag.Int("count", 50*1000*1000, "number of messages to send")
 
-	workers = flag.Int("workers", 500, "the workers that will be sending")
+	workers = flag.Int("workers", 50, "the workers that will be sending")
 )
 
 func main() {
@@ -37,12 +38,15 @@ func main() {
 		go func() {
 			defer work.Done()
 
-			for n := 0; n < (2e6 / *workers); n++ {
-				result := producer.Publish(*topic, (uint16(3)%uint16(*partition) + uint16(1)), message)
+			perWorkerCount := (*count / *workers)
+
+			for n := 0; n < perWorkerCount; n++ {
+				part := uint16((3 % (n + 1)) + 1)
+
+				result := producer.Publish(*topic, part, message)
 				if err := result.WaitForDone(); err != nil {
 					fmt.Printf("publish failed: %v\n", err.Error())
 				}
-				//fmt.Printf("%v\n", n)
 			}
 		}()
 	}
@@ -51,5 +55,5 @@ func main() {
 	elapsed := time.Since(startedAt)
 	msgsPerSecond := float64(2e6) / elapsed.Seconds()
 	mbPerSecond := (msgsPerSecond * 200.0) / 1000.0 / 1000.0
-	fmt.Printf("%v in %v, %v msg/s\n aka %v mb/s", 2e6, elapsed, float64(2e6)/elapsed.Seconds(), mbPerSecond)
+	fmt.Printf("%v in %v, %f msg/s\n aka %f mb/s", *count, elapsed, float64(*count)/elapsed.Seconds(), mbPerSecond)
 }
