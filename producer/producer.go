@@ -72,7 +72,7 @@ func (this *partition) do() {
 		"partition": this.partition,
 	})
 
-	// locallog.Infof("started")
+	locallog.Infof("started")
 
 	var buffer bytes.Buffer
 
@@ -143,6 +143,7 @@ func (this *partition) do() {
 			}
 			continue
 		}
+		locallog.Info("send write request")
 
 		// locallog.Info("message receiving")
 		if err := this.socket.SetOption(mangos.OptionRecvDeadline, 1*time.Second); err != nil {
@@ -161,7 +162,7 @@ func (this *partition) do() {
 			}
 			continue
 		} else {
-			//locallog.Info("message parsing reply")
+			locallog.Info("received reply")
 
 			if len(reply) == 0 {
 				// received empty reply

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/gdamore/mangos"
 	"github.com/gdamore/mangos/protocol/rep"
 	"github.com/gdamore/mangos/transport/ipc"
@@ -97,14 +98,17 @@ func (this *Broker) runClientApi() error {
 	}
 	log.WithField("address", this.clientApiAddress).Info("client api listening")
 
-	this.requestWorker(socket)
+	for n := 0; n < 10; n++ {
+		go this.requestWorker(socket)
+	}
+
 	return nil
 }
 
 func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message, pool *sync.Pool) {
 	if message.Body[0] == request.T_Append {
 		topicLength := int(message.Body[1])
-		//topic := string(message.Body[2 : 2+topicLength])
+		topic := string(message.Body[2 : 2+topicLength])
 		partition := binary.LittleEndian.Uint16(message.Body[2+topicLength:])
 
 		messages := message.Body[2+topicLength+2:]
@@ -122,6 +126,12 @@ func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message,
 			i += int(length)
 		}
 
+		log.WithFields(logrus.Fields{
+			"topic":         topic,
+			"partition":     partition,
+			"message_count": len(writeMessages),
+		}).Info("processing")
+
 		writeRequest := NewPartitionWriteRequest(writeMessages)
 		this.partitions[partition] <- writeRequest
 
@@ -136,7 +146,7 @@ func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message,
 		if err := socket.SendMsg(message); err != nil {
 			log.WithField("error", err).Warn("send message error")
 		}
-		//log.Info("reply send")
+		log.Info("reply send")
 	} else {
 		message.Body = append([]byte{response.T_ERROR}, []byte("unknown request type")...)
 		socket.SendMsg(message)
@@ -160,6 +170,7 @@ func (this *Broker) requestWorker(socket mangos.Socket) {
 			log.Info("request worker failed: %v", err.Error())
 			return
 		}
+		log.Info("request received")
 		requestCount.Inc(1)
 
 		//log.Info("request message received")
