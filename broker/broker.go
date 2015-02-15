@@ -105,6 +105,8 @@ func (this *Broker) runClientApi() error {
 }
 
 func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message, pool *sync.Pool) {
+	defer message.Free()
+
 	if message.Body[0] == request.T_Append {
 		topicLength := int(message.Body[1])
 		//topic := string(message.Body[2 : 2+topicLength])
