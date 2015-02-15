@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -31,6 +33,15 @@ type RequestContext struct {
 	Error    error
 
 	done chan struct{}
+}
+
+func (this *RequestContext) markDone(response *Response, err error) {
+	glog.V(2).Infof("marking request %v done", this.Request.Id)
+
+	this.Response = response
+	this.Error = err
+
+	close(this.done)
 }
 
 func NewRequestContext(request *Request) *RequestContext {
@@ -67,6 +78,8 @@ type Client struct {
 	conn     net.Conn
 	requests chan *RequestContext
 
+	closed chan struct{}
+
 	inflight map[uint32]*RequestContext
 }
 
@@ -80,6 +93,8 @@ func Dial(address string) (*Client, error) {
 		conn:     conn,
 		inflight: make(map[uint32]*RequestContext),
 		requests: make(chan *RequestContext),
+
+		closed: make(chan struct{}),
 	}
 	go client.do()
 
@@ -87,16 +102,31 @@ func Dial(address string) (*Client, error) {
 }
 
 func (this *Client) Close() error {
+	close(this.closed)
 	return this.conn.Close()
 }
 
 func (this *Client) Request(request *Request) (*Response, error) {
 	ctx := NewRequestContext(request)
-	this.requests <- ctx
+	timeout := time.After(1 * time.Second)
 
-	<-ctx.done
+	select {
+	case this.requests <- ctx:
+	case <-this.closed:
+		return nil, fmt.Errorf("closed")
+	case <-timeout:
+		return nil, fmt.Errorf("timeout")
+	}
 
-	return ctx.Response, ctx.Error
+	select {
+	case <-ctx.done:
+		glog.V(2).Infof("returning because of done: %v, err=%v", request.Id, ctx.Error)
+		return ctx.Response, ctx.Error
+	case <-this.closed:
+		return nil, fmt.Errorf("closed")
+	case <-timeout:
+		return nil, fmt.Errorf("timeout")
+	}
 }
 
 func (this *Client) do() {
@@ -107,12 +137,15 @@ func (this *Client) do() {
 	responses := make(chan *Response)
 
 	go func() {
+		glog.V(2).Info("client request loop stopped")
+
 		for ctx := range this.requests {
 			buffer.Truncate(0)
 
 			request := ctx.Request
 			request.Id = id
 			size := uint32(len(request.Payload))
+			send <- ctx
 
 			glog.V(2).Infof("preparing to send request %v, msg size %v", request.Id, size)
 
@@ -123,18 +156,18 @@ func (this *Client) do() {
 
 			if _, err := this.conn.Write(buffer.Bytes()); err != nil {
 				glog.V(2).Info("send error: %v", err.Error())
-				ctx.Error = err
-				close(ctx.done)
+				ctx.markDone(nil, err)
 
 				continue
 			}
 
-			send <- ctx
 			id++
 		}
 	}()
 
 	go func() {
+		glog.V(2).Info("client response loop stopped")
+
 		defer close(responses)
 		reader := bufio.NewReader(this.conn)
 
@@ -195,8 +228,8 @@ func (this *Client) do() {
 			}
 			delete(this.inflight, response.Id)
 
-			context.Response = response
-			close(context.done)
+			context.markDone(response, nil)
+			glog.V(2).Infof("request %v done", response.Id)
 		}
 	}
 }
