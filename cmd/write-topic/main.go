@@ -16,9 +16,9 @@ var (
 	address   = flag.String("address", "tcp://127.0.0.1:40899", "the address of the broker")
 	topic     = flag.String("topic", "test", "the topic to write to")
 	partition = flag.Int("partition", 3, "the partition to write to")
-	count     = flag.Int("count", 50*1000*1000, "number of messages to send")
+	count     = flag.Int("count", 5*1000*1000, "number of messages to send")
 
-	workers = flag.Int("workers", 50, "the workers that will be sending")
+	workers = flag.Int("workers", 10000, "the workers that will be sending")
 )
 
 func main() {
