@@ -45,7 +45,7 @@ func main() {
 
 				result := producer.Publish(*topic, part, message)
 				if err := result.WaitForDone(); err != nil {
-					fmt.Printf("publish failed: %v\n", err.Error())
+					fmt.Printf("publish failed, part=%v: %v\n", part, err.Error())
 				}
 			}
 		}()
@@ -54,6 +54,6 @@ func main() {
 	work.Wait()
 	elapsed := time.Since(startedAt)
 	msgsPerSecond := float64(2e6) / elapsed.Seconds()
-	mbPerSecond := (msgsPerSecond * 200.0) / 1000.0 / 1000.0
+	mbPerSecond := (msgsPerSecond * float64(len(message))) / 1000.0 / 1000.0
 	fmt.Printf("%v in %v, %f msg/s\n aka %f mb/s", *count, elapsed, float64(*count)/elapsed.Seconds(), mbPerSecond)
 }
