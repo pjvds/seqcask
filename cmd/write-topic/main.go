@@ -41,7 +41,7 @@ func main() {
 			perWorkerCount := (*count / *workers)
 
 			for n := 0; n < perWorkerCount; n++ {
-				part := uint16((3 % (n + 1)) + 1)
+				part := uint16((n % 3) + 1)
 
 				result := producer.Publish(*topic, part, message)
 				if err := result.WaitForDone(); err != nil {
