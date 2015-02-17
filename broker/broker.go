@@ -105,7 +105,10 @@ func (this *Broker) runClientApi() error {
 }
 
 func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message, pool *sync.Pool) {
-	//defer message.Free()
+	// NOTICE: the mangos message should *NOT* be freed! I know you feel the urge, especially
+	// after reading the docs. But it will introduces a race condition between the
+	// message freeing and send buffer. The biggest problem is that send will win most of the
+	// time, so failure is rare and hard to reproduce.
 
 	if message.Body[0] == request.T_Append {
 		topicLength := int(message.Body[1])
