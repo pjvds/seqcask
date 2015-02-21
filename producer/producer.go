@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gdamore/mangos"
 	"github.com/gdamore/mangos/protocol/req"
 	"github.com/gdamore/mangos/transport/ipc"
 	"github.com/gdamore/mangos/transport/tcp"
+	"github.com/pjvds/logging"
 	"github.com/pjvds/seqcask/response"
 )
 
@@ -67,18 +67,14 @@ func newPartition(brokerAddress string, topic string, part uint16) (*partition, 
 func (this *partition) do() {
 	defer close(this.Done)
 
-	locallog := log.WithFields(logrus.Fields{
+	var buffer bytes.Buffer
+	maxDataSize := int(128e3) // 64 kb
+	queue := make([]*PublishResult, 0)
+
+	log := log.WithFields(logging.Fields{
 		"topic":     this.topic,
 		"partition": this.partition,
 	})
-
-	locallog.Infof("started")
-
-	var buffer bytes.Buffer
-
-	maxDataSize := int(128e3) // 64 kb
-
-	queue := make([]*PublishResult, 0)
 
 	// write header
 	buffer.WriteByte(0)
@@ -88,6 +84,9 @@ func (this *partition) do() {
 
 	// remember data starting point
 	dataStart := buffer.Len()
+
+	// log the start
+	log.WithField("max_data_size", maxDataSize).Info("started")
 
 	for {
 		var request *PublishResult
@@ -124,16 +123,21 @@ func (this *partition) do() {
 		}
 
 		// send request to broker
-		// locallog.Info("message sending")
 		if err := this.socket.SetOption(mangos.OptionSendDeadline, 250*time.Second); err != nil {
-			locallog.WithFields(logrus.Fields{
+			log.WithFields(logging.Fields{
 				"error":  err,
-				"option": mangos.OptionSendDeadline}).Error("failed to set option")
+				"option": mangos.OptionSendDeadline,
+			}).Error("failed to set socket option")
 			continue
+
+			// TODO: report back to request
 		}
 
 		if err := this.socket.Send(buffer.Bytes()); err != nil {
-			locallog.WithField("error", err).Error("send failed")
+			log.WithFields(logging.Fields{
+				"error":       err,
+				"buffer_size": buffer.Len(),
+			}).Error("socket send failed")
 
 			// failed to send
 			for _, request = range queue {
@@ -144,14 +148,15 @@ func (this *partition) do() {
 
 		// locallog.Info("message receiving")
 		if err := this.socket.SetOption(mangos.OptionRecvDeadline, 1*time.Second); err != nil {
-			locallog.WithFields(logrus.Fields{
+			log.WithFields(logging.Fields{
 				"error":  err,
-				"option": mangos.OptionRecvDeadline}).Error("failed to set option")
+				"option": mangos.OptionRecvDeadline,
+			}).Error("failed to set socket option")
 			continue
 		}
 
 		if reply, err := this.socket.Recv(); err != nil {
-			locallog.WithField("error", err).Error("failed to receive")
+			log.WithField("error", err).Error("failed to receive")
 
 			// failed to receive
 			for _, request = range queue {

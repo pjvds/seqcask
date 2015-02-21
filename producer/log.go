@@ -1,9 +1,9 @@
 package producer
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/pjvds/logging"
 )
 
 var (
-	log = logrus.StandardLogger()
+	log = logging.CreateOrGetLogger("producer")
 )
