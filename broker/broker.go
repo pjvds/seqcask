@@ -13,6 +13,7 @@ import (
 	"github.com/gdamore/mangos/protocol/rep"
 	"github.com/gdamore/mangos/transport/ipc"
 	"github.com/gdamore/mangos/transport/tcp"
+	"github.com/pjvds/logging"
 	"github.com/pjvds/seqcask/cluster"
 	"github.com/pjvds/seqcask/request"
 	"github.com/pjvds/seqcask/response"
@@ -67,7 +68,7 @@ func (this *Broker) Run(stop chan struct{}) (err error) {
 	for {
 		select {
 		case err := <-clientApiErr:
-			log.Errorf("client api failed: %v", err.Error())
+			log.WithField("error", err).Error("client api failed")
 			session.Destroy()
 		case <-session.Lost:
 			return fmt.Errorf("cluster session lost")
@@ -143,6 +144,10 @@ func (this *Broker) handleRequest(socket mangos.Socket, message *mangos.Message,
 			log.WithField("error", err).Warn("send message error")
 		}
 	} else {
+		log.WithFields(logging.Fields{
+			"message_type": message.Body[0],
+		}).Debug("unknown request type")
+
 		message.Body = append([]byte{response.T_ERROR}, []byte("unknown request type")...)
 		socket.SendMsg(message)
 	}
@@ -162,7 +167,7 @@ func (this *Broker) requestWorker(socket mangos.Socket) {
 	for {
 		//log.Info("waiting for message")
 		if message, err = socket.RecvMsg(); err != nil {
-			log.Info("request worker failed: %v", err.Error())
+			log.WithField("error", err).Error("request worker failed")
 			return
 		}
 		requestCount.Inc(1)

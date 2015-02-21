@@ -1,9 +1,7 @@
 package broker
 
-import (
-	"github.com/Sirupsen/logrus"
-)
+import "github.com/pjvds/logging"
 
 var (
-	log = logrus.StandardLogger()
+	log = logging.CreateOrGetLogger("broker")
 )

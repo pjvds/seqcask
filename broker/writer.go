@@ -98,9 +98,9 @@ func (this *TopicPartitionWriter) do() {
 
 		err := this.store.Write(batch)
 
-		if err == nil {
-			err = this.store.Sync()
-		}
+		// if err == nil {
+		// 	err = this.store.Sync()
+		// }
 
 		for _, request = range requests {
 			request.report(err)
